@@ -58,7 +58,19 @@ async function renderChunk(event: MouseEvent) {
   hasRendered = true;
   if (chunks.length === 0 && event.currentTarget instanceof HTMLElement) {
     event.currentTarget.parentNode?.removeChild(event.currentTarget);
-    console.log('ZZZZZ - chunk timings', timings);
+    console.log('ZZZZZ - chunk timings', {
+      timings: timings.join(', '),
+      average: (() => {
+        let total = 0;
+        for (const time of timings) {
+          total += time;
+        }
+        return [
+          total / timings.length,
+          (total - timings[0]) / (timings.length - 1),
+        ].join(', ');
+      })(),
+    });
   }
 }
 
