@@ -1,8 +1,11 @@
 import './style.css';
 import testContent from './tests/example.txt?raw';
-import { createChunkedRenderer } from './createChunkedRenderer';
+import {
+  createChunkedRenderer,
+  type RenderToHTMLProps,
+} from './createChunkedRenderer';
 
-const renderToHTML = await createChunkedRenderer();
+let renderToHTML: ((props: RenderToHTMLProps) => string) | undefined;
 const LINES_PER_CHUNK = 50;
 const DISABLE_CHUNKS = false;
 
@@ -41,6 +44,9 @@ async function renderChunk(event: MouseEvent) {
   const chunk = chunks.shift();
   if (chunk == null || wrapper == null) return;
   const start = Date.now();
+  if (renderToHTML == null) {
+    renderToHTML = await createChunkedRenderer();
+  }
   const html = renderToHTML({
     lang: 'typescript',
     content: chunk,

@@ -8,7 +8,7 @@ import {
 import type { Root, Element, RootContent, Nodes } from 'hast';
 import { toHtml } from 'hast-util-to-html';
 
-interface RenderToHTMLProps {
+export interface RenderToHTMLProps {
   content: string;
   lang?: 'text' | 'yaml' | 'typescript' | 'javascript';
   showLineNumbers?: boolean;
@@ -20,6 +20,7 @@ interface RenderToHTMLProps {
 export async function createChunkedRenderer() {
   const start = Date.now();
   await loadWasm(import('shiki/wasm'));
+  console.log('ZZZZZ - loadWasmTime', Date.now() - start);
   const shiki = await createHighlighter({
     themes: ['min-light', 'min-dark'],
     langs: ['text', 'yaml', 'javascript', 'typescript'],
