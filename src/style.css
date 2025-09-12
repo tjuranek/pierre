@@ -19,7 +19,8 @@
 }
 
 html,
-body {
+body,
+#root {
   display: block;
   margin: 0;
   padding: 0;
@@ -35,7 +36,7 @@ body {
   -ms-text-size-adjust: 100%;
 }
 
-body {
+#root {
   margin: 0;
   min-width: 320px;
   display: grid;
@@ -85,6 +86,8 @@ code {
   max-width: 100%;
   box-sizing: border-box;
   z-index: 2;
+  display: flex;
+  gap: 12px;
 }
 
 .content {

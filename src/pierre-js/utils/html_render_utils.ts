@@ -1,4 +1,4 @@
-import type { HighlighterGeneric } from 'shiki';
+import type { BundledLanguage, BundledTheme, HighlighterGeneric } from 'shiki';
 import {
   getTokenStyleObject,
   stringifyTokenStyle,
@@ -29,12 +29,15 @@ export function createRow(line: number) {
   return { row, content };
 }
 
-export function createWrapperNodes(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  highlighter: HighlighterGeneric<any, any>
+export function setupWrapperNodes(
+  pre: HTMLPreElement,
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>
 ) {
-  const pre = document.createElement('pre');
+  // Clean out container
+  pre.innerHTML = '';
   pre.tabIndex = 0;
+  // NOTE(amadeus): We shouldn't set a theme property here, we need to figure
+  // out how to systemize this better most likely
   pre.dataset.theme = 'dark';
   pre.dataset.pre = '';
   pre.style = getEditorStyles(highlighter);
@@ -45,7 +48,7 @@ export function createWrapperNodes(
 }
 
 export function getEditorStyles(
-  highlighter: HighlighterGeneric<any, any>,
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>,
   prefix: string = 'shiki'
 ) {
   let styles = '';

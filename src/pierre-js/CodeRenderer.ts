@@ -7,7 +7,7 @@ import type {
 import {
   createRow,
   createSpanFromToken,
-  createWrapperNodes,
+  setupWrapperNodes,
 } from './utils/html_render_utils';
 import type { BundledLanguage, BundledTheme } from 'shiki';
 import { queueRender } from './UnversialRenderer';
@@ -39,7 +39,7 @@ interface CodeTokenOptionsMultiThemes extends CodeTokenOptionsBase {
   themes: { dark: BundledTheme; light: BundledTheme };
 }
 
-type CodeRendererOptions =
+export type CodeRendererOptions =
   | CodeTokenOptionsSingleTheme
   | CodeTokenOptionsMultiThemes;
 
@@ -50,12 +50,11 @@ type CodeRendererOptions =
 export class CodeRenderer {
   highlighter: HighlighterGeneric<BundledLanguage, BundledTheme> | undefined;
   options: CodeRendererOptions;
-  stream: ReadableStream<string>;
-  pre: HTMLPreElement = document.createElement('pre');
-  code: HTMLElement = document.createElement('code');
+  stream: ReadableStream<string> | undefined;
+  pre: HTMLPreElement | undefined;
+  code: HTMLElement | undefined;
 
-  constructor(stream: ReadableStream<string>, options: CodeRendererOptions) {
-    this.stream = stream;
+  constructor(options: CodeRendererOptions) {
     this.options = options;
     this.currentLineIndex = this.options.startingLineIndex ?? 1;
   }
@@ -65,15 +64,31 @@ export class CodeRenderer {
     return this.highlighter;
   }
 
-  async setup(wrapper: HTMLElement) {
-    const { onStreamStart, onStreamClose, onStreamAbort } = this.options;
+  private queuedSetupArgs: [ReadableStream<string>, HTMLPreElement] | undefined;
+  async setup(_stream: ReadableStream<string>, _wrapper: HTMLPreElement) {
+    const isSettingUp = this.queuedSetupArgs != null;
+    this.queuedSetupArgs = [_stream, _wrapper];
+    if (isSettingUp) {
+      // TODO(amadeus): Make it so that this function can be properly
+      // awaitable, maybe?
+      return;
+    }
     if (this.highlighter == null) {
       this.highlighter = await this.initializeHighlighter();
     }
-    const { pre, code } = createWrapperNodes(this.highlighter);
+
+    const [stream, wrapper] = this.queuedSetupArgs;
+    const { onStreamStart, onStreamClose, onStreamAbort } = this.options;
+    const { pre, code } = setupWrapperNodes(wrapper, this.highlighter);
+
+    this.queuedSetupArgs = undefined;
     this.pre = pre;
-    wrapper.appendChild(this.pre);
     this.code = code;
+    if (this.stream != null) {
+      // Should we be doing this?
+      this.stream.cancel();
+    }
+    this.stream = stream;
     this.stream
       .pipeThrough(
         new CodeToTokenTransformStream({
@@ -148,7 +163,7 @@ export class CodeRenderer {
 
   private createLine() {
     const { row, content } = createRow(this.currentLineIndex);
-    this.code.appendChild(row);
+    this.code?.appendChild(row);
     this.currentLineElement = content;
   }
 

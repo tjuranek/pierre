@@ -1,48 +1,19 @@
 import './style.css';
-import testContent from './tests/example.txt?raw';
-import testContent2 from './tests/example2.txt?raw';
+import { CodeConfigs } from './test_files/';
 import { createFakeContentStream } from './utils/createFakeContentStream';
 import { CodeRenderer } from 'pierrejs';
-import { createScrollFixer } from './utils/createScrollFixer';
-import { createHighlighterCleanup } from './utils/createHighlighterCleanup';
-
-const CODE = [
-  {
-    content: testContent,
-    letterByLetter: false,
-    options: {
-      lang: 'typescript',
-      themes: { dark: 'tokyo-night', light: 'vitesse-light' },
-      defaultColor: false,
-      ...createScrollFixer(),
-      ...createHighlighterCleanup(),
-    } as const,
-  },
-  {
-    content: testContent2,
-    letterByLetter: true,
-    options: {
-      lang: 'markdown',
-      themes: { dark: 'solarized-dark', light: 'solarized-light' },
-      defaultColor: false,
-      ...createScrollFixer(),
-      ...createHighlighterCleanup(),
-    } as const,
-  },
-] as const;
 
 async function startStreaming(event: MouseEvent) {
-  const wrapper = document.getElementById('content');
-  if (wrapper == null) return;
+  const container = document.getElementById('content');
+  if (container == null) return;
   if (event.currentTarget instanceof HTMLElement) {
     event.currentTarget.parentNode?.removeChild(event.currentTarget);
   }
-  for (const { content, letterByLetter, options } of CODE) {
-    const instance = new CodeRenderer(
-      createFakeContentStream(content, letterByLetter),
-      options
-    );
-    instance.setup(wrapper);
+  for (const { content, letterByLetter, options } of CodeConfigs) {
+    const pre = document.createElement('pre');
+    container.appendChild(pre);
+    const instance = new CodeRenderer(options);
+    instance.setup(createFakeContentStream(content, letterByLetter), pre);
   }
 }
 
