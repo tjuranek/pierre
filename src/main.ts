@@ -1,10 +1,10 @@
 import './style.css';
 import testContent from './tests/example.txt?raw';
 import testContent2 from './tests/example2.txt?raw';
-import { createFakeContentStream } from './utils/fakeContentStream';
-import { CodeRenderer } from './CodeRenderer';
-import { createScrollFixer } from './utils/createScrollFixer';
-import { createHighlighterCleanup } from './utils/createHighlighterCleanup';
+import { createFakeContentStream } from './utils/createFakeContentStream';
+import { CodeRenderer } from './pierre-js/CodeRenderer';
+import { createScrollFixer } from './pierre-js/utils/createScrollFixer';
+import { createHighlighterCleanup } from './pierre-js/utils/createHighlighterCleanup';
 
 const CODE = [
   {
