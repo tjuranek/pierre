@@ -1,4 +1,4 @@
-import type { CodeRenderer } from '../CodeRenderer';
+import type { CodeRenderer } from 'pierrejs';
 
 export function createScrollFixer() {
   let isScrolledToBottom = false;

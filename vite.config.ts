@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import type { ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import path, { resolve } from 'path';
 import fs from 'fs';
 
 export default defineConfig(({ mode }) => {
@@ -37,6 +37,11 @@ export default defineConfig(({ mode }) => {
           input: resolve(__dirname, 'index-react.html'),
         },
       },
+      resolve: {
+        alias: {
+          pierrejs: path.resolve(__dirname, './src/pierre-js/index.ts'),
+        },
+      },
     };
   }
 
@@ -45,6 +50,11 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'index.html'),
+      },
+    },
+    resolve: {
+      alias: {
+        pierrejs: path.resolve(__dirname, './src/pierre-js/index.ts'),
       },
     },
   };
