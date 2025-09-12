@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev-react": "vite --mode react",
+    "prod": "bun run build && bun run preview",
     "build": "bun run tsc && vite build",
-    "build-react": "bun run tsc && vite build --mode react --config vite.config.ts",
     "preview": "vite preview",
     "tsc": "tsc",
     "lint": "eslint .",
