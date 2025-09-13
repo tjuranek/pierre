@@ -31,6 +31,7 @@ export function createRow(line: number) {
 
 export function setupWrapperNodes(
   pre: HTMLPreElement,
+  themes: { dark: BundledTheme; light: BundledTheme },
   highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>
 ) {
   // Clean out container
@@ -40,7 +41,7 @@ export function setupWrapperNodes(
   // out how to systemize this better most likely
   pre.dataset.theme = 'dark';
   pre.dataset.pre = '';
-  pre.style = getEditorStyles(highlighter);
+  pre.style = getEditorStyles(highlighter, themes);
   const code = document.createElement('code');
   code.dataset.code = '';
   pre.appendChild(code);
@@ -49,13 +50,20 @@ export function setupWrapperNodes(
 
 export function getEditorStyles(
   highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>,
+  // NOTE(amadeus): Terrible super hack, fix this properly... boiii
+  themes: { dark: BundledTheme; light: BundledTheme },
   prefix: string = 'shiki'
 ) {
   let styles = '';
   for (const themeKey of highlighter.getLoadedThemes()) {
     const theme = highlighter.getTheme(themeKey);
-    styles += `--${prefix}-${theme.type}:${theme.fg};`;
-    styles += `--${prefix}-${theme.type}-bg:${theme.bg};`;
+    if (themeKey === themes.dark) {
+      styles += `--${prefix}-dark:${theme.fg};`;
+      styles += `--${prefix}-dark-bg:${theme.bg};`;
+    } else if (themeKey === themes.light) {
+      styles += `--${prefix}-light:${theme.fg};`;
+      styles += `--${prefix}-light-bg:${theme.bg};`;
+    }
   }
   return styles;
 }
