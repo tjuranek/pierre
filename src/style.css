@@ -149,24 +149,40 @@ code {
 
 [data-line]:hover [data-column-number],
 [data-line]:hover [data-column-content] {
-  background-color: color-mix(in srgb, var(--shiki-light-bg) 95%, black);
+  background-color: color-mix(
+    in srgb,
+    var(--shiki-light-bg, var(--shiki-bg)) 95%,
+    black
+  );
 }
 
 @media (prefers-color-scheme: dark) {
   [data-line]:hover [data-column-number],
   [data-line]:hover [data-column-content] {
-    background-color: color-mix(in srgb, var(--shiki-dark-bg) 95%, white);
+    background-color: color-mix(
+      in srgb,
+      var(--shiki-dark-bg, var(--shiki-bg)) 95%,
+      white
+    );
   }
 }
 
 [data-theme='light'] [data-line]:hover [data-column-number],
 [data-theme='light'] [data-line]:hover [data-column-content] {
-  background-color: color-mix(in srgb, var(--shiki-light-bg) 95%, black);
+  background-color: color-mix(
+    in srgb,
+    var(--shiki-light-bg, var(--shiki-bg)) 95%,
+    black
+  );
 }
 
 [data-theme='dark'] [data-line]:hover [data-column-number],
 [data-theme='dark'] [data-line]:hover [data-column-content] {
-  background-color: color-mix(in srgb, var(--shiki-dark-bg) 95%, white);
+  background-color: color-mix(
+    in srgb,
+    var(--shiki-dark-bg, var(--shiki-bg)) 95%,
+    white
+  );
 }
 
 [data-column-number] {

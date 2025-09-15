@@ -51,40 +51,31 @@ interface SetupWrapperThemes extends ThemesVariant, SetupWrapperBase {}
 
 type SetupWrapperNodesProps = SetupWrapperTheme | SetupWrapperThemes;
 
-export function setupWrapperNodes({ pre, ...props }: SetupWrapperNodesProps) {
+export function setupWrapperNodes(props: SetupWrapperNodesProps) {
+  const { pre } = props;
   // Clean out container
   pre.innerHTML = '';
   pre.tabIndex = 0;
   pre.dataset.pierrejs = '';
-  pre.style = getEditorStyles(props);
+  setWrapperProps(props);
   const code = document.createElement('code');
   code.dataset.code = '';
   pre.appendChild(code);
   return { pre, code };
 }
 
-interface GetEditorStylesBase {
-  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
-  prefix?: string;
-}
-
-interface GetEditorStylesThemes extends ThemeVariant, GetEditorStylesBase {}
-
-interface GetEditorStylesTheme extends ThemesVariant, GetEditorStylesBase {}
-
-type GetEditorStylesProps = GetEditorStylesTheme | GetEditorStylesThemes;
-
-export function getEditorStyles({
-  highlighter,
-  theme,
-  themes,
-  prefix = 'shiki',
-}: GetEditorStylesProps) {
+function setWrapperProps(
+  { pre, highlighter, theme, themes }: SetupWrapperNodesProps,
+  prefix = 'shiki'
+) {
   let styles = '';
   if (theme != null) {
     const themeData = highlighter.getTheme(theme);
     styles += `color:${themeData.fg};`;
     styles += `background-color:${themeData.bg};`;
+    styles += `--${prefix}-fg:${themeData.fg};`;
+    styles += `--${prefix}-bg:${themeData.bg};`;
+    pre.dataset.theme = themeData.type;
   } else {
     let themeData = highlighter.getTheme(themes.dark);
     styles += `--${prefix}-dark:${themeData.fg};`;
@@ -93,6 +84,7 @@ export function getEditorStyles({
     themeData = highlighter.getTheme(themes.light);
     styles += `--${prefix}-light:${themeData.fg};`;
     styles += `--${prefix}-light-bg:${themeData.bg};`;
+    pre.dataset.themed = '';
   }
-  return styles;
+  pre.style = styles;
 }
