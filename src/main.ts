@@ -1,6 +1,6 @@
 import type { BundledLanguage, BundledTheme } from 'shiki';
 import './style.css';
-import { CodeConfigs } from './test_files/';
+import { CodeConfigs, toggleTheme } from './test_files/';
 import { createFakeContentStream } from './utils/createFakeContentStream';
 import { CodeRenderer, isHighlighterNull, preloadHighlighter } from 'pierrejs';
 
@@ -35,13 +35,7 @@ function handlePreload() {
   }
 }
 
-document.getElementById('toggle-theme')?.addEventListener('click', () => {
-  const codes = document.querySelectorAll('[data-theme]');
-  for (const code of codes) {
-    if (!(code instanceof HTMLElement)) return;
-    code.dataset.theme = code.dataset.theme === 'light' ? 'dark' : 'light';
-  }
-});
+document.getElementById('toggle-theme')?.addEventListener('click', toggleTheme);
 
 const streamCode = document.getElementById('stream-code');
 if (streamCode != null) {

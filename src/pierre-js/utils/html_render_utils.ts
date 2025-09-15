@@ -55,10 +55,7 @@ export function setupWrapperNodes({ pre, ...props }: SetupWrapperNodesProps) {
   // Clean out container
   pre.innerHTML = '';
   pre.tabIndex = 0;
-  // NOTE(amadeus): We shouldn't set a theme property here, we need to figure
-  // out how to systemize this better most likely
-  pre.dataset.theme = 'dark';
-  pre.dataset.pre = '';
+  pre.dataset.pierrejs = '';
   pre.style = getEditorStyles(props);
   const code = document.createElement('code');
   code.dataset.code = '';

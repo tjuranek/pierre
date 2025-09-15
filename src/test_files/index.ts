@@ -29,3 +29,22 @@ export const CodeConfigs = [
     } as const,
   },
 ] as const;
+
+export function toggleTheme() {
+  for (const pre of document.querySelectorAll('[data-pierrejs]')) {
+    if (!(pre instanceof HTMLElement)) return;
+
+    const currentTheme = pre.dataset.theme;
+    const systemDark = window.matchMedia(
+      '(prefers-color-scheme: dark)'
+    ).matches;
+
+    if (currentTheme === 'light') {
+      pre.dataset.theme = 'dark';
+    } else if (currentTheme === 'dark') {
+      delete pre.dataset.theme;
+    } else {
+      pre.dataset.theme = systemDark ? 'light' : 'dark';
+    }
+  }
+}
