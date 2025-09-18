@@ -4,6 +4,7 @@ import tsContent from './example_ts.txt?raw';
 import diffContent from './diff.patch?raw';
 import { createHighlighterCleanup } from '../utils/createHighlighterCleanup';
 import type { BundledLanguage } from 'shiki';
+import type { FileMetadata } from 'pierrejs';
 
 export { mdContent, tsContent };
 
@@ -56,9 +57,14 @@ export const DIFF_CONTENT = diffContent;
 export const DIFF_CONTENT_FORMATS: Record<string, BundledLanguage | undefined> =
   {
     js: 'javascript',
+    jsx: 'jsx',
     html: 'html',
     json: 'json',
     ts: 'typescript',
-    tsx: 'typescript',
+    tsx: 'tsx',
     css: 'css',
   };
+
+export function getFiletypeFromMetadata(file: FileMetadata) {
+  return DIFF_CONTENT_FORMATS[file.name.match(/\.([^.]+)$/)?.[1] || ''];
+}

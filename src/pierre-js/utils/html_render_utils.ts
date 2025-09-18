@@ -43,6 +43,7 @@ export function createRow(line: number) {
 interface SetupWrapperBase {
   pre: HTMLPreElement;
   highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
+  splitView: boolean;
 }
 
 interface SetupWrapperTheme extends ThemeVariant, SetupWrapperBase {}
@@ -65,7 +66,7 @@ export function setupWrapperNodes(props: SetupWrapperNodesProps) {
 }
 
 function setWrapperProps(
-  { pre, highlighter, theme, themes }: SetupWrapperNodesProps,
+  { pre, highlighter, theme, themes, splitView }: SetupWrapperNodesProps,
   prefix?: string
 ) {
   let styles = '';
@@ -86,6 +87,7 @@ function setWrapperProps(
     styles += `${formatCSSVariablePrefix(prefix)}light-bg:${themeData.bg};`;
     pre.dataset.themed = '';
   }
+  pre.dataset.type = splitView ? 'split' : 'file';
   pre.style = styles;
 }
 

@@ -1,10 +1,11 @@
 import type { BundledTheme } from 'shiki';
-import type { EMPTY_LINE } from './constants';
 
 export interface ThemesType {
   dark: BundledTheme;
   light: BundledTheme;
 }
+
+export type HunkTypes = 'context' | 'change';
 
 export type FileTypes =
   | 'changed'
@@ -20,15 +21,18 @@ export interface ParsedPatch {
 
 export interface Hunk {
   additionEnd: number;
-  additionLines: ChangeLines;
+  additionLines: LinesHunk[];
   additionStart: number;
   deletedEnd: number;
-  deletedLines: ChangeLines;
+  deletedLines: LinesHunk[];
   deletedStart: number;
   hunkContext: string | undefined;
 }
 
-export type ChangeLines = (string | typeof EMPTY_LINE)[];
+export interface LinesHunk {
+  type: HunkTypes;
+  lines: string[];
+}
 
 export interface FileMetadata {
   name: string;

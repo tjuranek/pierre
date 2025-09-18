@@ -1,11 +1,16 @@
 import {
   DIFF_GIT_HEADER,
-  EMPTY_LINE,
   FILE_CONTEXT_BLOB,
   HUNK_HEADER,
   PER_FILE_DIFF_BREAK_REGEX,
 } from '../constants';
-import type { FileMetadata, Hunk, ParsedPatch } from '../types';
+import type {
+  FileMetadata,
+  Hunk,
+  HunkTypes,
+  LinesHunk,
+  ParsedPatch,
+} from '../types';
 
 export function parsePatchContent(data: string): ParsedPatch {
   const rawFiles = data.split(PER_FILE_DIFF_BREAK_REGEX);
@@ -95,23 +100,27 @@ export function parsePatchContent(data: string): ParsedPatch {
       for (const line of lines) {
         const fixedLine = line.substring(1);
         if (line.startsWith(' ')) {
-          // Ensure context lines always start at the same relative indexes,
-          // otherwise we'll push blank line symboles into the smaller array
-          if (deletedLines.length !== additionLines.length) {
-            const smaller =
-              deletedLines.length > additionLines.length
-                ? additionLines
-                : deletedLines;
-            while (additionLines.length !== deletedLines.length) {
-              smaller.push(EMPTY_LINE);
-            }
+          if (currentFile.type !== 'new') {
+            const lastDeletedHunk = getLastOfType('context', deletedLines);
+            lastDeletedHunk.lines.push(fixedLine);
           }
-          deletedLines.push(fixedLine);
-          additionLines.push(fixedLine);
+
+          if (currentFile.type !== 'deleted') {
+            const lastAdditionHunk = getLastOfType('context', additionLines);
+            lastAdditionHunk.lines.push(fixedLine);
+          }
         } else if (line.startsWith('-')) {
-          deletedLines.push(fixedLine);
+          const lastDeletedHunk = getLastOfType('change', deletedLines);
+          if (currentFile.type !== 'deleted') {
+            getLastOfType('change', additionLines);
+          }
+          lastDeletedHunk.lines.push(fixedLine);
         } else if (line.startsWith('+')) {
-          additionLines.push(fixedLine);
+          const lastAdditionHunk = getLastOfType('change', additionLines);
+          if (currentFile.type !== 'new') {
+            getLastOfType('change', deletedLines);
+          }
+          lastAdditionHunk.lines.push(fixedLine);
         }
       }
       currentFile.hunks.push(hunkData);
@@ -121,4 +130,17 @@ export function parsePatchContent(data: string): ParsedPatch {
     }
   }
   return { patchMetadata, files };
+}
+
+function getLastOfType(type: HunkTypes, arr: LinesHunk[]): LinesHunk {
+  let lastLinesHunk = arr[arr.length - 1];
+  if (lastLinesHunk?.type === type) {
+    return lastLinesHunk;
+  }
+  lastLinesHunk = {
+    type,
+    lines: [],
+  };
+  arr.push(lastLinesHunk);
+  return lastLinesHunk;
 }
