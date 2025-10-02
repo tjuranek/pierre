@@ -1,17 +1,24 @@
 import type {
-  CodeOptionsMultipleThemes,
   CodeToHastOptions,
   DecorationItem,
   HighlighterGeneric,
   ShikiTransformer,
 } from '@shikijs/core';
-import { type ChangeObject, diffWordsWithSpace } from 'diff';
+import { type ChangeObject, diffChars, diffWordsWithSpace } from 'diff';
 import type { Element, ElementContent, Root, RootContent } from 'hast';
 import { toHtml } from 'hast-util-to-html';
-import type { BundledLanguage, BundledTheme } from 'shiki';
+import type { BundledTheme } from 'shiki';
 
 import { getSharedHighlighter } from './SharedHighlighter';
-import type { FileMetadata, HUNK_LINE_TYPE, Hunk } from './types';
+import type {
+  BaseRendererOptions,
+  FileDiffMetadata,
+  HUNK_LINE_TYPE,
+  Hunk,
+  SupportedLanguages,
+  ThemeRendererOptions,
+  ThemesRendererOptions,
+} from './types';
 import {
   createCodeNode,
   createHunkSeparator,
@@ -27,26 +34,9 @@ interface ChangeHunk {
   additionLines: string[];
 }
 
-export interface DiffDecorationItem extends DecorationItem {
-  type: 'additions' | 'deletions';
-  // Kinda hate this API for now... need to think about it more...
-  hunkIndex: number;
-}
-
-interface CodeTokenOptionsBase {
-  lang?: BundledLanguage;
-  defaultColor?: CodeOptionsMultipleThemes['defaultColor'];
-  preferWasmHighlighter?: boolean;
-  unified?: boolean;
-
-  // FIXME(amadeus): Figure out how to incorporate these mb?
-  onPreRender?(instance: DiffRenderer): unknown;
-  onPostRender?(instance: DiffRenderer): unknown;
-}
-
 interface RenderHunkProps {
   hunk: Hunk;
-  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
+  highlighter: HighlighterGeneric<SupportedLanguages, BundledTheme>;
   state: SharedRenderState;
   transformer: ShikiTransformer;
 
@@ -65,33 +55,28 @@ interface SharedRenderState {
   lineInfo: Record<number, LineInfo | undefined>;
   spans: Record<number, number | undefined>;
   decorations: DecorationItem[];
+  disableLineNumbers: boolean;
 }
 
-interface CodeTokenOptionsSingleTheme extends CodeTokenOptionsBase {
-  theme: BundledTheme;
-  themes?: never;
-}
+interface DiffHunkThemeRendererOptions
+  extends BaseRendererOptions,
+    ThemeRendererOptions {}
 
-interface CodeTokenOptionsMultiThemes extends CodeTokenOptionsBase {
-  theme?: never;
-  themes: { dark: BundledTheme; light: BundledTheme };
-}
+interface DiffHunkThemesRendererOptions
+  extends BaseRendererOptions,
+    ThemesRendererOptions {}
 
-export type DiffRendererOptions =
-  | CodeTokenOptionsSingleTheme
-  | CodeTokenOptionsMultiThemes;
+export type DiffHunksRendererOptions =
+  | DiffHunkThemeRendererOptions
+  | DiffHunkThemesRendererOptions;
 
-// Something to think about here -- might be worth not forcing a renderer to
-// take a stream right off the bat, and instead allow it to get the highlighter
-// and everything setup ASAP, and allow setup the ability to pass a
-// ReadableStream to it...
-export class DiffRenderer {
-  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme> | undefined;
-  options: DiffRendererOptions;
+export class DiffHunksRenderer {
+  highlighter: HighlighterGeneric<SupportedLanguages, BundledTheme> | undefined;
+  options: DiffHunksRendererOptions;
   pre: HTMLPreElement | undefined;
-  diff: FileMetadata | undefined;
+  diff: FileDiffMetadata | undefined;
 
-  constructor(options: DiffRendererOptions) {
+  constructor(options: DiffHunksRendererOptions) {
     this.options = options;
   }
 
@@ -101,12 +86,47 @@ export class DiffRenderer {
     this.diff = undefined;
   }
 
-  setOptions(options: DiffRendererOptions) {
+  setOptions(
+    options: DiffHunksRendererOptions,
+    disableRerender: boolean = false
+  ) {
     this.options = options;
     if (this.pre == null || this.diff == null) {
       return;
     }
-    this.render(this.diff, this.pre);
+    if (!disableRerender) {
+      this.render(this.diff, this.pre);
+    }
+  }
+
+  getOptionsWithDefaults() {
+    const {
+      theme,
+      themes,
+      diffStyle = 'split',
+      lineDiffType = 'word-alt',
+      maxLineDiffLength = 1000,
+      maxLineLengthForHighlighting = 1000,
+      disableLineNumbers = false,
+    } = this.options;
+    if (themes != null) {
+      return {
+        themes,
+        diffStyle,
+        lineDiffType,
+        maxLineDiffLength,
+        maxLineLengthForHighlighting,
+        disableLineNumbers,
+      };
+    }
+    return {
+      theme,
+      diffStyle,
+      lineDiffType,
+      maxLineDiffLength,
+      maxLineLengthForHighlighting,
+      disableLineNumbers,
+    };
   }
 
   private async initializeHighlighter() {
@@ -114,9 +134,9 @@ export class DiffRenderer {
     return this.highlighter;
   }
 
-  private queuedRenderArgs: [FileMetadata, HTMLPreElement] | undefined;
+  private queuedRenderArgs: [FileDiffMetadata, HTMLPreElement] | undefined;
 
-  async render(_diff: FileMetadata, _wrapper: HTMLPreElement) {
+  async render(_diff: FileDiffMetadata, _wrapper: HTMLPreElement) {
     const isSettingUp = this.queuedRenderArgs != null;
     this.queuedRenderArgs = [_diff, _wrapper];
     if (isSettingUp) {
@@ -135,14 +155,15 @@ export class DiffRenderer {
 
   private renderDiff(
     wrapper: HTMLPreElement,
-    diff: FileMetadata,
-    highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>
+    diff: FileDiffMetadata,
+    highlighter: HighlighterGeneric<SupportedLanguages, BundledTheme>
   ) {
-    const { themes, theme, unified = false } = this.options;
-    const split =
-      unified === true
-        ? false
-        : diff.type === 'change' || diff.type === 'rename-changed';
+    const { themes, theme, diffStyle, disableLineNumbers } =
+      this.getOptionsWithDefaults();
+    const unified = diffStyle === 'unified';
+    const split = unified
+      ? false
+      : diff.type === 'change' || diff.type === 'rename-changed';
     const pre = setupPreNode(
       themes != null
         ? { pre: wrapper, themes, highlighter, split }
@@ -154,7 +175,8 @@ export class DiffRenderer {
     const codeAdditions = createCodeNode({ columnType: 'additions' });
     const codeDeletions = createCodeNode({ columnType: 'deletions' });
     const codeUnified = createCodeNode({ columnType: 'unified' });
-    const { state, transformer } = createTransformerWithState();
+    const { state, transformer } =
+      createTransformerWithState(disableLineNumbers);
     let hunkIndex = 0;
     for (const hunk of diff.hunks) {
       if (hunkIndex > 0) {
@@ -191,13 +213,14 @@ export class DiffRenderer {
 
   private createHastOptions(
     transformer: ShikiTransformer,
-    decorations?: DecorationItem[]
+    decorations?: DecorationItem[],
+    forceTextLang: boolean = false
   ): CodeToHastOptions {
     if ('theme' in this.options && this.options.theme != null) {
       return {
         theme: this.options.theme,
         cssVariablePrefix: formatCSSVariablePrefix(),
-        lang: this.options.lang ?? ('text' as BundledLanguage),
+        lang: forceTextLang ? 'text' : (this.options.lang ?? 'text'),
         defaultColor: this.options.defaultColor ?? false,
         transformers: [transformer],
         decorations,
@@ -208,7 +231,7 @@ export class DiffRenderer {
       return {
         themes: this.options.themes,
         cssVariablePrefix: formatCSSVariablePrefix(),
-        lang: this.options.lang ?? ('text' as BundledLanguage),
+        lang: forceTextLang ? 'text' : (this.options.lang ?? 'text'),
         defaultColor: this.options.defaultColor ?? false,
         transformers: [transformer],
         decorations,
@@ -227,7 +250,8 @@ export class DiffRenderer {
     codeUnified,
   }: RenderHunkProps) {
     if (hunk.hunkContent == null) return;
-    const { additions, deletions, unified } = this.processLines(hunk);
+    const { additions, deletions, unified, hasLongLines } =
+      this.processLines(hunk);
 
     if (unified.content.length > 0) {
       // Remove trailing blank line
@@ -236,7 +260,7 @@ export class DiffRenderer {
       state.lineInfo = unified.lineInfo;
       const nodes = highlighter.codeToHast(
         content,
-        this.createHastOptions(transformer, unified.decorations)
+        this.createHastOptions(transformer, unified.decorations, hasLongLines)
       );
       codeUnified.insertAdjacentHTML(
         'beforeend',
@@ -253,7 +277,8 @@ export class DiffRenderer {
         content,
         this.createHastOptions(
           transformer,
-          deletions.decorations.length > 0 ? deletions.decorations : undefined
+          deletions.decorations.length > 0 ? deletions.decorations : undefined,
+          hasLongLines
         )
       );
       codeDeletions.insertAdjacentHTML(
@@ -271,7 +296,8 @@ export class DiffRenderer {
         content,
         this.createHastOptions(
           transformer,
-          additions.decorations.length > 0 ? additions.decorations : undefined
+          additions.decorations.length > 0 ? additions.decorations : undefined,
+          hasLongLines
         )
       );
       codeAdditions.insertAdjacentHTML(
@@ -282,7 +308,10 @@ export class DiffRenderer {
   }
 
   private processLines(hunk: Hunk) {
-    const { unified = false } = this.options;
+    const { maxLineLengthForHighlighting, diffStyle } =
+      this.getOptionsWithDefaults();
+    const unified = diffStyle === 'unified';
+    let hasLongLines = false;
 
     const additionContent: string[] = [];
     const additionLineInfo: Record<number, LineInfo | undefined> = {};
@@ -358,7 +387,11 @@ export class DiffRenderer {
 
     let lastType: HUNK_LINE_TYPE | undefined;
     for (const rawLine of hunk.hunkContent ?? []) {
-      const { line, type } = parseLineType(rawLine);
+      const { line, type, longLine } = parseLineType(
+        rawLine,
+        maxLineLengthForHighlighting
+      );
+      hasLongLines = hasLongLines || longLine;
       if (type === 'context') {
         createSpanIfNecessary();
       }
@@ -465,6 +498,7 @@ export class DiffRenderer {
     const { unifiedDecorations, deletionDecorations, additionDecorations } =
       this.parseDecorations(diffGroups);
     return {
+      hasLongLines,
       additions: {
         content: additionContent,
         lineInfo: additionLineInfo,
@@ -485,11 +519,19 @@ export class DiffRenderer {
     };
   }
 
-  private parseDecorations(diffGroups: ChangeHunk[]) {
-    const { unified = false } = this.options;
+  private parseDecorations(
+    diffGroups: ChangeHunk[],
+    disableDecorations = false
+  ) {
+    const { lineDiffType, maxLineDiffLength, diffStyle } =
+      this.getOptionsWithDefaults();
+    const unified = diffStyle === 'unified';
     const unifiedDecorations: DecorationItem[] = [];
     const additionDecorations: DecorationItem[] = [];
     const deletionDecorations: DecorationItem[] = [];
+    if (disableDecorations || lineDiffType === 'none') {
+      return { unifiedDecorations, deletionDecorations, additionDecorations };
+    }
     for (const group of diffGroups) {
       const len = Math.min(
         group.additionLines.length,
@@ -503,20 +545,37 @@ export class DiffRenderer {
         }
         // Lets skep running diffs on super long lines because it's probably
         // expensive and hard to follow
-        if (deletionLine.length > 1000 || additionLine.length > 1000) {
+        if (
+          deletionLine.length > maxLineDiffLength ||
+          additionLine.length > maxLineDiffLength
+        ) {
           continue;
         }
-        const lineDiff = diffWordsWithSpace(deletionLine, additionLine);
+        const lineDiff =
+          lineDiffType === 'char'
+            ? diffChars(deletionLine, additionLine)
+            : diffWordsWithSpace(deletionLine, additionLine);
         const deletionSpans: [0 | 1, string][] = [];
         const additionSpans: [0 | 1, string][] = [];
+        const enableJoin = lineDiffType === 'word-alt';
         for (const item of lineDiff) {
           if (!item.added && !item.removed) {
-            pushOrJoinSpan(item, deletionSpans, true);
-            pushOrJoinSpan(item, additionSpans, true);
+            pushOrJoinSpan({
+              item,
+              arr: deletionSpans,
+              enableJoin,
+              isNeutral: true,
+            });
+            pushOrJoinSpan({
+              item,
+              arr: additionSpans,
+              enableJoin,
+              isNeutral: true,
+            });
           } else if (item.removed) {
-            pushOrJoinSpan(item, deletionSpans);
+            pushOrJoinSpan({ item, arr: deletionSpans, enableJoin });
           } else {
-            pushOrJoinSpan(item, additionSpans);
+            pushOrJoinSpan({ item, arr: additionSpans, enableJoin });
           }
         }
         let spanIndex = 0;
@@ -572,7 +631,7 @@ export class DiffRenderer {
       theme,
       preferWasmHighlighter,
     } = this.options;
-    const langs: BundledLanguage[] = [];
+    const langs: SupportedLanguages[] = [];
     if (lang != null) {
       langs.push(lang);
     }
@@ -633,16 +692,17 @@ function convertLine(
     node.children.push({ type: 'text', value: '\n' });
   }
   const children = [node];
-  // NOTE(amadeus): This should probably be based on a setting
-  children.unshift({
-    tagName: 'div',
-    type: 'element',
-    properties: { 'data-column-number': '' },
-    children:
-      lineInfo.metadataContent == null
-        ? [{ type: 'text', value: `${lineInfo.number}` }]
-        : [],
-  });
+  if (!state.disableLineNumbers) {
+    children.unshift({
+      tagName: 'div',
+      type: 'element',
+      properties: { 'data-column-number': '' },
+      children:
+        lineInfo.metadataContent == null
+          ? [{ type: 'text', value: `${lineInfo.number}` }]
+          : [],
+    });
+  }
   return {
     tagName: 'div',
     type: 'element',
@@ -682,7 +742,7 @@ function createEmptyRowBuffer(size: number): Element {
   };
 }
 
-function createTransformerWithState(): {
+function createTransformerWithState(disableLineNumbers: boolean): {
   state: SharedRenderState;
   transformer: ShikiTransformer;
 } {
@@ -690,6 +750,7 @@ function createTransformerWithState(): {
     spans: {},
     lineInfo: {},
     decorations: [],
+    disableLineNumbers,
   };
   return {
     state,
@@ -730,18 +791,26 @@ function createTransformerWithState(): {
   };
 }
 
+interface PushOrJoinSpanProps {
+  item: ChangeObject<string>;
+  arr: [0 | 1, string][];
+  enableJoin: boolean;
+  isNeutral?: boolean;
+}
+
 // For diff decoration spans, we want to be sure that if there is a single
 // white-space gap between diffs that we join them together into a longer diff span.
 // Spans are basically just a tuple - 1 means the content should be
 // highlighted, 0 means it should not, we still need to the span data to figure
 // out span positions
-function pushOrJoinSpan(
-  item: ChangeObject<string>,
-  arr: [0 | 1, string][],
-  isNeutral: boolean = false
-) {
+function pushOrJoinSpan({
+  item,
+  arr,
+  enableJoin,
+  isNeutral = false,
+}: PushOrJoinSpanProps) {
   const lastItem = arr[arr.length - 1];
-  if (lastItem == null || item.value === '\n') {
+  if (lastItem == null || item.value === '\n' || !enableJoin) {
     arr.push([isNeutral ? 0 : 1, item.value]);
     return;
   }

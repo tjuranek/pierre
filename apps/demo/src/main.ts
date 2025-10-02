@@ -1,28 +1,34 @@
 import {
   CodeRenderer,
-  DiffRenderer,
+  DiffFileRenderer,
   type ParsedPatch,
+  type SupportedLanguages,
+  getFiletypeFromFileName,
   isHighlighterNull,
   parseDiffFromFiles,
   parsePatchContent,
   preloadHighlighter,
-  renderFileHeader,
 } from '@pierre/diff-ui';
 import type { BundledLanguage, BundledTheme } from 'shiki';
 
-import {
-  DIFF_CONTENT as CONTENT,
-  CodeConfigs,
-  FILE_NEW,
-  FILE_OLD,
-  getFiletypeFromMetadata,
-  toggleTheme,
-} from './mocks/';
+import { CodeConfigs, FILE_NEW, FILE_OLD, toggleTheme } from './mocks/';
 import './style.css';
 import { createFakeContentStream } from './utils/createFakeContentStream';
 
+let loadingPatch: Promise<string> | undefined;
+async function loadPatchContent() {
+  loadingPatch =
+    loadingPatch ??
+    new Promise((resolve) => {
+      import('./mocks/diff.patch?raw').then(({ default: content }) =>
+        resolve(content)
+      );
+    });
+  return loadingPatch;
+}
+
 function startStreaming() {
-  const container = document.getElementById('content');
+  const container = document.getElementById('wrapper');
   if (container == null) return;
   if (loadDiff != null) {
     loadDiff.parentElement?.removeChild(loadDiff);
@@ -39,14 +45,15 @@ function startStreaming() {
 }
 
 let parsedPatches: ParsedPatch[] | undefined;
-function handlePreloadDiff() {
+async function handlePreloadDiff() {
   if (parsedPatches != null || !isHighlighterNull()) return;
-  parsedPatches = parsePatchContent(CONTENT);
+  const content = await loadPatchContent();
+  parsedPatches = parsePatchContent(content);
   console.log('Parsed File:', parsedPatches);
-  const langs = new Set<BundledLanguage>();
+  const langs = new Set<SupportedLanguages>();
   for (const parsedPatch of parsedPatches) {
     for (const file of parsedPatch.files) {
-      const lang = getFiletypeFromMetadata(file);
+      const lang = getFiletypeFromFileName(file.name);
       if (lang != null) {
         langs.add(lang);
       }
@@ -58,23 +65,23 @@ function handlePreloadDiff() {
   });
 }
 
-const diffInstances: DiffRenderer[] = [];
+const diffInstances: DiffFileRenderer[] = [];
 function renderDiff(parsedPatches: ParsedPatch[]) {
-  const container = document.getElementById('content');
-  if (container == null) return;
+  const wrapper = document.getElementById('wrapper');
+  if (wrapper == null) return;
   if (loadDiff != null) {
     loadDiff.parentElement?.removeChild(loadDiff);
   }
   if (streamCode != null) {
     streamCode.parentElement?.removeChild(streamCode);
   }
-  container.innerHTML = '';
+  wrapper.innerHTML = '';
   window.scrollTo({ top: 0 });
   for (const instance of diffInstances) {
     instance.cleanUp();
   }
   diffInstances.length = 0;
-  container.dataset.diff = '';
+  wrapper.dataset.diff = '';
 
   const checkbox = document.getElementById('unified') as
     | HTMLInputElement
@@ -82,18 +89,15 @@ function renderDiff(parsedPatches: ParsedPatch[]) {
   const unified = checkbox?.checked ?? false;
   for (const parsedPatch of parsedPatches) {
     if (parsedPatch.patchMetadata != null) {
-      container.appendChild(createFileMetadata(parsedPatch.patchMetadata));
+      wrapper.appendChild(createFileMetadata(parsedPatch.patchMetadata));
     }
-    for (const file of parsedPatch.files) {
-      container.appendChild(renderFileHeader(file));
-      const pre = document.createElement('pre');
-      container.appendChild(pre);
-      const instance = new DiffRenderer({
-        lang: getFiletypeFromMetadata(file),
+    for (const fileDiff of parsedPatch.files) {
+      const instance = new DiffFileRenderer({
         themes: { dark: 'tokyo-night', light: 'solarized-light' },
-        unified,
+        diffStyle: unified ? 'unified' : 'split',
+        detectLanguage: true,
       });
-      instance.render(file, pre);
+      instance.render({ fileDiff, wrapper });
       diffInstances.push(instance);
     }
   }
@@ -134,9 +138,9 @@ if (streamCode != null) {
 
 const loadDiff = document.getElementById('load-diff');
 if (loadDiff != null) {
-  loadDiff.addEventListener('click', () =>
-    renderDiff(parsedPatches ?? parsePatchContent(CONTENT))
-  );
+  loadDiff.addEventListener('click', async () => {
+    renderDiff(parsedPatches ?? parsePatchContent(await loadPatchContent()));
+  });
   loadDiff.addEventListener('mouseenter', handlePreloadDiff);
 }
 
@@ -166,7 +170,10 @@ if (unifiedCheckbox instanceof HTMLInputElement) {
   unifiedCheckbox.addEventListener('change', () => {
     const checked = unifiedCheckbox.checked;
     for (const instance of diffInstances) {
-      instance.setOptions({ ...instance.options, unified: checked });
+      instance.setOptions({
+        ...instance.options,
+        diffStyle: checked ? 'unified' : 'split',
+      });
     }
   });
 }
@@ -180,33 +187,33 @@ if (diff2Files != null) {
     }
     lastWrapper = document.createElement('div');
 
-    const file1Container = document.createElement('div');
-    file1Container.className = 'file';
+    const fileOldContainer = document.createElement('div');
+    fileOldContainer.className = 'file';
     lastWrapper.className = 'files-input';
-    const file1Name = document.createElement('input');
-    file1Name.type = 'text';
-    file1Name.value = 'file_old.ts';
-    file1Name.spellcheck = false;
-    const file1Contents = document.createElement('textarea');
-    file1Contents.value = FILE_OLD;
-    file1Contents.spellcheck = false;
-    file1Container.appendChild(file1Name);
-    file1Container.appendChild(file1Contents);
-    lastWrapper.appendChild(file1Container);
+    const fileOldName = document.createElement('input');
+    fileOldName.type = 'text';
+    fileOldName.value = 'file_old.ts';
+    fileOldName.spellcheck = false;
+    const fileOldContents = document.createElement('textarea');
+    fileOldContents.value = FILE_OLD;
+    fileOldContents.spellcheck = false;
+    fileOldContainer.appendChild(fileOldName);
+    fileOldContainer.appendChild(fileOldContents);
+    lastWrapper.appendChild(fileOldContainer);
 
-    const file2Container = document.createElement('div');
-    file2Container.className = 'file';
+    const fileNewContainer = document.createElement('div');
+    fileNewContainer.className = 'file';
     lastWrapper.className = 'files-input';
-    const file2Name = document.createElement('input');
-    file2Name.type = 'text';
-    file2Name.value = 'file_new.ts';
-    file2Name.spellcheck = false;
-    const file2Contents = document.createElement('textarea');
-    file2Contents.value = FILE_NEW;
-    file2Contents.spellcheck = false;
-    file2Container.appendChild(file2Name);
-    file2Container.appendChild(file2Contents);
-    lastWrapper.appendChild(file2Container);
+    const fileNewName = document.createElement('input');
+    fileNewName.type = 'text';
+    fileNewName.value = 'file_new.ts';
+    fileNewName.spellcheck = false;
+    const fileNewContents = document.createElement('textarea');
+    fileNewContents.value = FILE_NEW;
+    fileNewContents.spellcheck = false;
+    fileNewContainer.appendChild(fileNewName);
+    fileNewContainer.appendChild(fileNewContents);
+    lastWrapper.appendChild(fileNewContainer);
 
     const bottomWrapper = document.createElement('div');
     bottomWrapper.className = 'buttons';
@@ -214,12 +221,12 @@ if (diff2Files != null) {
     render.innerText = 'Render Diff';
     render.addEventListener('click', () => {
       const oldFile = {
-        name: file1Name.value,
-        contents: file1Contents.value,
+        name: fileOldName.value,
+        contents: fileOldContents.value,
       };
       const newFile = {
-        name: file2Name.value,
-        contents: file2Contents.value,
+        name: fileNewName.value,
+        contents: fileNewContents.value,
       };
 
       lastWrapper?.parentNode?.removeChild(lastWrapper);

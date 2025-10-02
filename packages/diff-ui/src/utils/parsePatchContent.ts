@@ -8,7 +8,7 @@ import {
   SPLIT_WITH_NEWLINES,
   UNIFIED_DIFF_FILE_BREAK_REGEX,
 } from '../constants';
-import type { FileMetadata, Hunk, ParsedPatch } from '../types';
+import type { FileDiffMetadata, Hunk, ParsedPatch } from '../types';
 
 function processPatch(data: string): ParsedPatch {
   const isGitDiff = GIT_DIFF_FILE_BREAK_REGEX.test(data);
@@ -16,8 +16,8 @@ function processPatch(data: string): ParsedPatch {
     isGitDiff ? GIT_DIFF_FILE_BREAK_REGEX : UNIFIED_DIFF_FILE_BREAK_REGEX
   );
   let patchMetadata: string | undefined;
-  const files: FileMetadata[] = [];
-  let currentFile: FileMetadata | undefined;
+  const files: FileDiffMetadata[] = [];
+  let currentFile: FileDiffMetadata | undefined;
   for (const file of rawFiles) {
     if (isGitDiff && !GIT_DIFF_FILE_BREAK_REGEX.test(file)) {
       if (patchMetadata == null) {
@@ -56,6 +56,7 @@ function processPatch(data: string): ParsedPatch {
           prevName: undefined,
           type: 'change',
           hunks: [],
+          lines: 0,
         };
         // Push that first line back into the group of lines so we can properly
         // parse it out
@@ -72,7 +73,9 @@ function processPatch(data: string): ParsedPatch {
             } else if (type === '+++' && fileName !== '/dev/null') {
               currentFile.name = fileName;
             }
-          } else if (isGitDiff) {
+          }
+          // Git diffs have a bunch of additional metadata we can pull from
+          else if (isGitDiff) {
             if (line.startsWith('new file mode')) {
               currentFile.type = 'new';
             }
@@ -86,21 +89,29 @@ function processPatch(data: string): ParsedPatch {
                 currentFile.type = 'rename-changed';
               }
             }
+            // We have to handle these for pure renames because there won't be
+            // --- and +++ lines
+            if (line.startsWith('rename from ')) {
+              currentFile.prevName = line.replace('rename from ', '');
+            }
+            if (line.startsWith('rename to ')) {
+              currentFile.name = line.replace('rename to ', '');
+            }
           }
         }
         continue;
       }
       const hunkData: Hunk = {
-        additionCount: parseInt(match[4]),
+        additionCount: parseInt(match[4] ?? '1'),
         additionStart: parseInt(match[3]),
-        deletedCount: parseInt(match[2]),
+        deletedCount: parseInt(match[2] ?? '1'),
         deletedStart: parseInt(match[1]),
         hunkContent: lines.length > 0 ? lines : undefined,
         hunkContext: match[5],
       };
       if (
         isNaN(hunkData.additionCount) ||
-        isNaN(hunkData.additionCount) ||
+        isNaN(hunkData.deletedCount) ||
         isNaN(hunkData.additionStart) ||
         isNaN(hunkData.deletedStart)
       ) {
@@ -114,6 +125,7 @@ function processPatch(data: string): ParsedPatch {
         lines.pop();
       }
       currentFile.hunks.push(hunkData);
+      currentFile.lines += hunkData.hunkContent?.length ?? 0;
     }
     if (currentFile != null) {
       if (

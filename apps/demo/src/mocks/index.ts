@@ -1,13 +1,5 @@
-import type { FileMetadata } from '@pierre/diff-ui';
-import type { BundledLanguage } from 'shiki';
-
 import { createHighlighterCleanup } from '../utils/createHighlighterCleanup';
 import { createScrollFixer } from '../utils/createScrollFixer';
-import diffContent2 from './diff2.patch?raw';
-import diffContent3 from './diff3.patch?raw';
-import diffContent4 from './diff4.patch?raw';
-import diffContent5 from './diff5.patch?raw';
-import diffContent from './diff.patch?raw';
 import mdContent from './example_md.txt?raw';
 import tsContent from './example_ts.txt?raw';
 import fileNew from './fileNew.txt?raw';
@@ -53,25 +45,3 @@ export function toggleTheme() {
 
 export const FILE_OLD = fileOld;
 export const FILE_NEW = fileNew;
-
-export const DIFF_CONTENT = diffContent;
-export const DIFF_CONTENT_2 = diffContent2;
-export const DIFF_CONTENT_3 = diffContent3;
-export const DIFF_CONTENT_4 = diffContent4;
-export const DIFF_CONTENT_5 = diffContent5;
-
-export const DIFF_CONTENT_FORMATS: Record<string, BundledLanguage | undefined> =
-  {
-    js: 'javascript',
-    jsx: 'jsx',
-    html: 'html',
-    json: 'json',
-    ts: 'typescript',
-    tsx: 'tsx',
-    css: 'css',
-    patch: 'diff',
-  };
-
-export function getFiletypeFromMetadata(file: FileMetadata) {
-  return DIFF_CONTENT_FORMATS[file.name.match(/\.([^.]+)$/)?.[1] || ''];
-}
