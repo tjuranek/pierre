@@ -11,9 +11,16 @@ import {
 } from '@pierre/diff-ui';
 import type { BundledLanguage, BundledTheme } from 'shiki';
 
-import { CodeConfigs, FILE_NEW, FILE_OLD, toggleTheme } from './mocks/';
+import {
+  CodeConfigs,
+  FAKE_LINE_ANNOTATIONS,
+  FILE_NEW,
+  FILE_OLD,
+  type LineCommentMetadata,
+} from './mocks/';
 import './style.css';
 import { createFakeContentStream } from './utils/createFakeContentStream';
+import { renderAnnotation } from './utils/renderAnnotation';
 
 let loadingPatch: Promise<string> | undefined;
 async function loadPatchContent() {
@@ -65,7 +72,7 @@ async function handlePreloadDiff() {
   });
 }
 
-const diffInstances: DiffFileRenderer[] = [];
+const diffInstances: DiffFileRenderer<LineCommentMetadata>[] = [];
 function renderDiff(parsedPatches: ParsedPatch[]) {
   const wrapper = document.getElementById('wrapper');
   if (wrapper == null) return;
@@ -87,19 +94,52 @@ function renderDiff(parsedPatches: ParsedPatch[]) {
     | HTMLInputElement
     | undefined;
   const unified = checkbox?.checked ?? false;
+  const wrap =
+    wrapCheckbox instanceof HTMLInputElement ? wrapCheckbox.checked : false;
+  let patchIndex = 0;
   for (const parsedPatch of parsedPatches) {
     if (parsedPatch.patchMetadata != null) {
       wrapper.appendChild(createFileMetadata(parsedPatch.patchMetadata));
     }
+    const patchAnnotations = FAKE_LINE_ANNOTATIONS[patchIndex] ?? [];
+    let hunkIndex = 0;
     for (const fileDiff of parsedPatch.files) {
-      const instance = new DiffFileRenderer({
+      const fileAnnotations = patchAnnotations[hunkIndex];
+      const instance = new DiffFileRenderer<LineCommentMetadata>({
         themes: { dark: 'tokyo-night', light: 'solarized-light' },
         diffStyle: unified ? 'unified' : 'split',
         detectLanguage: true,
+        overflow: wrap ? 'wrap' : 'scroll',
+        renderAnnotation,
+        onLineClick(props, diff) {
+          console.log(diff.name, 'onLineClick', props);
+        },
+        // Super noisy, but for debuggin
+        // onLineEnter(props, diff) {
+        //   console.log(
+        //     diff.name,
+        //     'onLineEnter',
+        //     props.annotationSide,
+        //     props.lineNumber
+        //   );
+        // },
+        // onLineLeave(props, diff) {
+        //   console.log(
+        //     diff.name,
+        //     'onLineLeave',
+        //     props.annotationSide,
+        //     props.lineNumber
+        //   );
+        // },
       });
+      if (fileAnnotations != null) {
+        instance.setLineAnnotations(fileAnnotations);
+      }
       instance.render({ fileDiff, wrapper });
       diffInstances.push(instance);
+      hunkIndex++;
     }
+    patchIndex++;
   }
 }
 
@@ -151,16 +191,11 @@ if (wrapCheckbox != null) {
       return;
     }
     const { checked } = currentTarget;
-    const elements = document.querySelectorAll('[data-overflow]');
-    for (const element of elements) {
-      if (!(element instanceof HTMLElement)) {
-        continue;
-      }
-      if (checked) {
-        element.dataset.overflow = 'wrap';
-      } else {
-        element.dataset.overflow = 'scroll';
-      }
+    for (const instance of diffInstances) {
+      instance.setOptions({
+        ...instance.options,
+        overflow: checked ? 'wrap' : 'scroll',
+      });
     }
   });
 }
@@ -250,4 +285,23 @@ if (diff2Files != null) {
 
     document.body.appendChild(lastWrapper);
   });
+}
+
+function toggleTheme() {
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+  const pageTheme =
+    (document.documentElement.dataset.theme ?? systemTheme === 'dark')
+      ? 'dark'
+      : 'light';
+
+  document.documentElement.dataset.theme =
+    pageTheme === 'dark' ? 'light' : 'dark';
+
+  for (const instance of diffInstances) {
+    const themeSetting = instance.options.themeType ?? 'system';
+    const currentTheme = themeSetting === 'system' ? pageTheme : themeSetting;
+    instance.setThemeType(currentTheme === 'light' ? 'dark' : 'light');
+  }
 }

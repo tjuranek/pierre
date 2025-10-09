@@ -1,9 +1,13 @@
 import { DiffHunksRenderer } from './DiffHunksRenderer';
+import './custom-components/Container';
 import type {
+  AnnotationSide,
   BaseRendererOptions,
   FileDiffMetadata,
+  LineAnnotation,
   RenderCustomFileMetadata,
   ThemeRendererOptions,
+  ThemeTypes,
   ThemesRendererOptions,
 } from './types';
 import { getFiletypeFromFileName } from './utils/getFiletypeFromFileName';
@@ -16,46 +20,102 @@ interface FileDiffRenderProps {
   wrapper?: HTMLElement;
 }
 
-interface DiffFileBaseOptions {
+type FileBaseRendererOptions = Omit<BaseRendererOptions, 'lang'>;
+
+export interface LineEventBaseProps {
+  annotationSide: AnnotationSide;
+  type: 'context' | 'change-deletion' | 'change-addition';
+  lineNumber: number;
+  lineElement: HTMLElement;
+}
+
+export interface OnLineClickProps extends LineEventBaseProps {
+  event: PointerEvent;
+}
+
+export interface OnLineEnterProps extends LineEventBaseProps {
+  event: MouseEvent;
+}
+
+export interface OnLineLeaveProps extends LineEventBaseProps {
+  event: MouseEvent;
+}
+
+type HandleMouseEventProps =
+  | { eventType: 'click'; event: PointerEvent }
+  | { eventType: 'move'; event: MouseEvent };
+
+interface DiffFileBaseOptions<LAnnotation> {
   disableFileHeader?: boolean;
   renderCustomMetadata?: RenderCustomFileMetadata;
   detectLanguage?: boolean;
+  renderAnnotation?(
+    annotation: LineAnnotation<LAnnotation>,
+    diff: FileDiffMetadata
+  ): HTMLElement | undefined;
+  onLineClick?(props: OnLineClickProps, fileDiff: FileDiffMetadata): unknown;
+  onLineEnter?(props: LineEventBaseProps, fileDiff: FileDiffMetadata): unknown;
+  onLineLeave?(props: LineEventBaseProps, fileDiff: FileDiffMetadata): unknown;
 }
 
-type FileBaseRendererOptions = Omit<BaseRendererOptions, 'lang'>;
-
-interface DiffFileThemeRendererOptions
+interface DiffFileThemeRendererOptions<LAnnotation>
   extends FileBaseRendererOptions,
     ThemeRendererOptions,
-    DiffFileBaseOptions {}
+    DiffFileBaseOptions<LAnnotation> {}
 
-interface DiffFileThemesRendererOptions
+interface DiffFileThemesRendererOptions<LAnnotation>
   extends FileBaseRendererOptions,
     ThemesRendererOptions,
-    DiffFileBaseOptions {}
+    DiffFileBaseOptions<LAnnotation> {}
 
-export type DiffFileRendererOptions =
-  | DiffFileThemeRendererOptions
-  | DiffFileThemesRendererOptions;
+export type DiffFileRendererOptions<LAnnotation> =
+  | DiffFileThemeRendererOptions<LAnnotation>
+  | DiffFileThemesRendererOptions<LAnnotation>;
 
-export class DiffFileRenderer {
-  options: DiffFileRendererOptions;
+export class DiffFileRenderer<LAnnotation = undefined> {
+  options: DiffFileRendererOptions<LAnnotation>;
   private fileContainer: HTMLElement | undefined;
   private header: HTMLDivElement | undefined;
   private pre: HTMLPreElement | undefined;
 
-  hunksRenderer: DiffHunksRenderer | undefined;
+  hunksRenderer: DiffHunksRenderer<LAnnotation> | undefined;
 
-  constructor(options: DiffFileRendererOptions) {
+  constructor(options: DiffFileRendererOptions<LAnnotation>) {
     this.options = options;
   }
 
-  setOptions(options: DiffFileRendererOptions) {
+  // FIXME(amadeus): This is a bit of a looming issue that I'll need to resolve:
+  // * Do we publicly allow merging of options or do we have individualized setters?
+  // * When setting new options, we need to figure out what settings require a
+  //   re-render and which can just be applied more elegantly
+  // * There's also an issue of options that live here on the File class and
+  //   those that live on the Hunk class, and it's a bit of an issue with passing
+  //   settings down and mirroring them (not great...)
+  setOptions(options: DiffFileRendererOptions<LAnnotation>) {
     this.options = options;
     if (this.fileDiff == null) {
       return;
     }
+    this.hunksRenderer?.setOptions(this.options, true);
     this.render({ fileDiff: this.fileDiff });
+  }
+
+  private mergeOptions(options: Partial<DiffFileRendererOptions<LAnnotation>>) {
+    // @ts-expect-error FIXME
+    this.options = { ...this.options, ...options };
+  }
+
+  setThemeType(themeType: ThemeTypes) {
+    if (this.options.themeType === themeType) {
+      return;
+    }
+    this.mergeOptions({ themeType });
+    this.hunksRenderer?.setThemeType(themeType);
+  }
+
+  private lineAnnotations: LineAnnotation<LAnnotation>[] = [];
+  setLineAnnotations(lineAnnotations: LineAnnotation<LAnnotation>[]) {
+    this.lineAnnotations = lineAnnotations;
   }
 
   cleanUp() {
@@ -66,6 +126,7 @@ export class DiffFileRenderer {
     this.fileDiff = undefined;
   }
 
+  private annotationElements: HTMLElement[] = [];
   private fileDiff: FileDiffMetadata | undefined;
   async render({
     fileDiff,
@@ -87,7 +148,28 @@ export class DiffFileRenderer {
       this.hunksRenderer.setOptions({ ...this.options, lang }, true);
     }
     this.fileDiff = fileDiff;
+    // This is kinda jank, lol
+    this.hunksRenderer.setLineAnnotations(this.lineAnnotations);
     await this.hunksRenderer.render(this.fileDiff, pre);
+
+    for (const element of this.annotationElements) {
+      element.parentNode?.removeChild(element);
+    }
+    this.annotationElements.length = 0;
+
+    const { renderAnnotation } = this.options;
+    if (renderAnnotation != null && this.lineAnnotations.length > 0) {
+      for (const annotation of this.lineAnnotations) {
+        const content = renderAnnotation(annotation, fileDiff);
+        if (content == null) continue;
+        const el = document.createElement('div');
+        el.dataset.annotationSlot = '';
+        el.slot = `${annotation.side}-${annotation.lineNumber}`;
+        el.appendChild(content);
+        this.annotationElements.push(el);
+        fileContainer.appendChild(el);
+      }
+    }
   }
 
   getOrCreateFileContainer(fileContainer?: HTMLElement) {
@@ -97,27 +179,116 @@ export class DiffFileRenderer {
     ) {
       return this.fileContainer;
     }
-    this.fileContainer = fileContainer ?? document.createElement('div');
-    this.fileContainer.dataset.pjsContainer = '';
+    this.fileContainer =
+      fileContainer ?? document.createElement('pjs-container');
+    const { onLineClick, onLineEnter, onLineLeave } = this.options;
+    if (onLineClick != null) {
+      this.fileContainer.addEventListener('click', this.handleMouseClick);
+    }
+    if (onLineEnter != null || onLineLeave != null) {
+      this.fileContainer.addEventListener('mousemove', this.handleMouseMove);
+      if (onLineLeave) {
+        this.fileContainer.addEventListener(
+          'mouseleave',
+          this.handleMouseLeave
+        );
+      }
+    }
     return this.fileContainer;
   }
 
-  getOrCreatePre(container: HTMLElement) {
+  handleMouseClick = (event: PointerEvent) => {
+    this.handleMouseEvent({ eventType: 'click', event });
+  };
+
+  hoveredRow: LineEventBaseProps | undefined;
+  handleMouseMove = (event: MouseEvent) => {
+    this.handleMouseEvent({ eventType: 'move', event });
+  };
+  handleMouseLeave = () => {
+    if (this.hoveredRow == null || this.fileDiff == null) return;
+    this.options.onLineLeave?.(this.hoveredRow, this.fileDiff);
+    this.hoveredRow = undefined;
+  };
+
+  private getLineData(path: EventTarget[]): LineEventBaseProps | undefined {
+    const lineElement = path.find(
+      (element) => element instanceof HTMLElement && 'line' in element.dataset
+    );
+    if (!(lineElement instanceof HTMLElement)) return undefined;
+    const lineNumber = parseInt(lineElement.dataset.line ?? '');
+    if (isNaN(lineNumber)) return;
+    const type = lineElement.dataset.lineType;
+    if (
+      type !== 'context' &&
+      type !== 'change-deletion' &&
+      type !== 'change-addition'
+    ) {
+      return undefined;
+    }
+    const annotationSide: AnnotationSide = (() => {
+      if (type === 'change-deletion') {
+        return 'deletions';
+      }
+      if (type === 'change-addition') {
+        return 'additions';
+      }
+      const parent = lineElement.closest('[data-code]');
+      if (!(parent instanceof HTMLElement)) {
+        return 'additions';
+      }
+      return 'deletions' in parent.dataset ? 'deletions' : 'additions';
+    })();
+    return {
+      annotationSide,
+      type,
+      lineElement,
+      lineNumber,
+    };
+  }
+
+  private handleMouseEvent({ eventType, event }: HandleMouseEventProps) {
+    if (this.fileDiff == null) return;
+    const data = this.getLineData(event.composedPath());
+    switch (eventType) {
+      case 'move': {
+        if (this.hoveredRow?.lineElement === data?.lineElement) {
+          break;
+        }
+        if (this.hoveredRow != null) {
+          this.options.onLineLeave?.(this.hoveredRow, this.fileDiff);
+          this.hoveredRow = undefined;
+        }
+        if (data != null) {
+          this.hoveredRow = data;
+          this.options.onLineEnter?.(this.hoveredRow, this.fileDiff);
+        }
+        break;
+      }
+      case 'click':
+        if (data == null) break;
+        this.options.onLineClick?.({ ...data, event }, this.fileDiff);
+        break;
+    }
+  }
+
+  private getOrCreatePre(container: HTMLElement) {
     // If we haven't created a pre element yet, lets go ahead and do that
     if (this.pre == null) {
       this.pre = document.createElement('pre');
-      container.appendChild(this.pre);
+      container.shadowRoot?.appendChild(this.pre);
     }
     // If we have a new parent container for the pre element, lets go ahead and
     // move it into the new container
     else if (this.pre.parentNode !== container) {
-      container.appendChild(this.pre);
+      container.shadowRoot?.appendChild(this.pre);
     }
     return this.pre;
   }
 
   // NOTE(amadeus): We just always do a full re-render with the header...
-  renderHeader(file: FileDiffMetadata, container: HTMLElement) {
+  // FIXME(amadeus): This should mb be a custom component?
+  private renderHeader(file: FileDiffMetadata, container: HTMLElement) {
     const { renderCustomMetadata, disableFileHeader = false } = this.options;
     if (disableFileHeader) {
       if (this.header != null) {
@@ -127,9 +298,9 @@ export class DiffFileRenderer {
     }
     const newHeader = renderFileHeader(file, renderCustomMetadata);
     if (this.header != null) {
-      container.replaceChild(newHeader, this.header);
+      container.shadowRoot?.replaceChild(newHeader, this.header);
     } else {
-      container.prepend(newHeader);
+      container.shadowRoot?.prepend(newHeader);
     }
     this.header = newHeader;
   }

@@ -42,6 +42,8 @@ export type SupportedLanguages = BundledLanguage | 'text';
 
 export type HUNK_LINE_TYPE = 'context' | 'addition' | 'deletion' | 'metadata';
 
+export type ThemeTypes = 'system' | 'light' | 'dark';
+
 export interface BaseRendererOptions {
   diffStyle: 'unified' | 'split'; // split is default
   // NOTE(amadeus): 'word-alt' attempts to join word regions that are separated
@@ -50,6 +52,8 @@ export interface BaseRendererOptions {
   maxLineDiffLength?: number; // 1000 is default
   maxLineLengthForHighlighting?: number; // 1000 is default
   disableLineNumbers?: boolean;
+  overflow?: 'scroll' | 'wrap'; // 'scroll' is default
+  themeType?: ThemeTypes; // 'system' is default
 
   // Shiki config options
   lang?: SupportedLanguages;
@@ -72,3 +76,10 @@ export type RenderCustomFileMetadata = (
 ) => Element | null | undefined | string | number;
 
 export type ExtensionFormatMap = Record<string, SupportedLanguages | undefined>;
+
+export type AnnotationSide = 'deletions' | 'additions';
+
+export type LineAnnotation<T = undefined> = {
+  side: AnnotationSide;
+  lineNumber: number;
+} & (T extends undefined ? { metadata?: undefined } : { metadata: T });
