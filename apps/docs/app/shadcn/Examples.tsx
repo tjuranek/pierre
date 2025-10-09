@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   GitPlatformSync,
+  type GitPlatformSyncProps,
   type PlatformConfigObject,
+  type RepositoryData,
+  type SyncedRepo,
 } from '@/registry/new-york/blocks/git-platform-sync/git-platform-sync';
 import { DynamicCodeBlock } from 'fumadocs-ui/components/dynamic-codeblock';
 import { Lollipop, Menu } from 'lucide-react';
@@ -14,6 +17,22 @@ const EXAMPLE_APP_SLUG = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG;
 const DEFAULT_PLATFORM_CONFIG = [
   { platform: 'github', slug: EXAMPLE_APP_SLUG },
 ] as PlatformConfigObject[];
+
+function mockFetchCreateRepo(repoData: RepositoryData) {
+  return new Promise<SyncedRepo>((resolve) => {
+    setTimeout(() => {
+      resolve({
+        url: 'https://123.code.storage.com/xyz',
+        repository: {
+          // bad but mocks
+          owner: repoData.owner ?? '',
+          name: repoData.name ?? '',
+          defaultBranch: repoData.branch ?? '',
+        },
+      });
+    }, 250);
+  });
+}
 
 let cachedPortalContainers: { light: HTMLElement; dark: HTMLElement } | null =
   null;
@@ -55,10 +74,7 @@ function FakeTopBar({
   );
 }
 
-type ExamplePropsSingle = Omit<
-  React.ComponentProps<typeof GitPlatformSync>,
-  'platforms'
-> & {
+type ExamplePropsSingle = Omit<GitPlatformSyncProps, 'platforms'> & {
   __label?: React.ReactNode;
   platforms?: PlatformConfigObject[];
 };
@@ -77,6 +93,14 @@ const Example = ({
   details?: React.ReactNode;
 }) => {
   const containers = getPortalContainers();
+  const [syncedRepo, setSyncedRepo] = useState<SyncedRepo | undefined>(
+    undefined
+  );
+  const DEFAULT_ON_REPO_CREATE_ACTION = async (repoData: RepositoryData) => {
+    console.log('repo create action:', repoData);
+    const result = await mockFetchCreateRepo(repoData);
+    setSyncedRepo(result);
+  };
 
   return (
     <div id={id}>
@@ -94,27 +118,47 @@ const Example = ({
         <div className="w-full md:w-1/2 light">
           <div className="bg-background flex flex-col gap-2 justify-center items-center p-4 h-full min-h-[120px]">
             {Array.isArray(exampleProps) ? (
-              exampleProps.map(({ __label, platforms, ...props }, index) => (
-                <Fragment key={index}>
-                  {__label ? (
-                    <div className="text-sm text-muted-foreground">
-                      {__label}
-                    </div>
-                  ) : null}
-                  <FakeTopBar>
-                    <GitPlatformSync
-                      platforms={platforms ?? DEFAULT_PLATFORM_CONFIG}
-                      {...props}
-                      __container={containers?.light}
-                    />
-                  </FakeTopBar>
-                </Fragment>
-              ))
+              exampleProps.map(
+                (
+                  {
+                    __label,
+                    platforms,
+                    onRepoCreateAction,
+                    codeStorageRepo,
+                    ...props
+                  },
+                  index
+                ) => (
+                  <Fragment key={index}>
+                    {__label ? (
+                      <div className="text-sm text-muted-foreground">
+                        {__label}
+                      </div>
+                    ) : null}
+                    <FakeTopBar>
+                      <GitPlatformSync
+                        platforms={platforms ?? DEFAULT_PLATFORM_CONFIG}
+                        onRepoCreateAction={
+                          onRepoCreateAction ?? DEFAULT_ON_REPO_CREATE_ACTION
+                        }
+                        codeStorageRepo={codeStorageRepo ?? syncedRepo}
+                        {...props}
+                        __container={containers?.light}
+                      />
+                    </FakeTopBar>
+                  </Fragment>
+                )
+              )
             ) : (
               <FakeTopBar>
                 <GitPlatformSync
                   {...exampleProps}
                   platforms={exampleProps.platforms ?? DEFAULT_PLATFORM_CONFIG}
+                  onRepoCreateAction={
+                    exampleProps.onRepoCreateAction ??
+                    DEFAULT_ON_REPO_CREATE_ACTION
+                  }
+                  codeStorageRepo={exampleProps.codeStorageRepo ?? syncedRepo}
                   __container={containers?.light}
                 />
               </FakeTopBar>
@@ -124,27 +168,47 @@ const Example = ({
         <div className="w-full md:w-1/2 dark">
           <div className="bg-background flex flex-col gap-2 justify-center items-center p-4 h-full min-h-[120px]">
             {Array.isArray(exampleProps) ? (
-              exampleProps.map(({ __label, platforms, ...props }, index) => (
-                <Fragment key={index}>
-                  {__label ? (
-                    <div className="text-sm text-muted-foreground">
-                      {__label}
-                    </div>
-                  ) : null}
-                  <FakeTopBar>
-                    <GitPlatformSync
-                      platforms={platforms ?? DEFAULT_PLATFORM_CONFIG}
-                      {...props}
-                      __container={containers?.dark}
-                    />
-                  </FakeTopBar>
-                </Fragment>
-              ))
+              exampleProps.map(
+                (
+                  {
+                    __label,
+                    platforms,
+                    onRepoCreateAction,
+                    codeStorageRepo,
+                    ...props
+                  },
+                  index
+                ) => (
+                  <Fragment key={index}>
+                    {__label ? (
+                      <div className="text-sm text-muted-foreground">
+                        {__label}
+                      </div>
+                    ) : null}
+                    <FakeTopBar>
+                      <GitPlatformSync
+                        platforms={platforms ?? DEFAULT_PLATFORM_CONFIG}
+                        onRepoCreateAction={
+                          onRepoCreateAction ?? DEFAULT_ON_REPO_CREATE_ACTION
+                        }
+                        codeStorageRepo={codeStorageRepo ?? syncedRepo}
+                        {...props}
+                        __container={containers?.dark}
+                      />
+                    </FakeTopBar>
+                  </Fragment>
+                )
+              )
             ) : (
               <FakeTopBar>
                 <GitPlatformSync
                   {...exampleProps}
                   platforms={exampleProps.platforms ?? DEFAULT_PLATFORM_CONFIG}
+                  onRepoCreateAction={
+                    exampleProps.onRepoCreateAction ??
+                    DEFAULT_ON_REPO_CREATE_ACTION
+                  }
+                  codeStorageRepo={exampleProps.codeStorageRepo ?? syncedRepo}
                   __container={containers?.dark}
                 />
               </FakeTopBar>
@@ -215,6 +279,7 @@ function TopBar() {
           slug: '<my-app-slug>',
         },
       ]}
+      
     />
   );
 }
@@ -281,8 +346,8 @@ function ExampleEvents() {
       title="Events"
       id="git-platform-sync--events"
       exampleProps={{
-        onRepoCreated: (repoData) => {
-          console.log('repo created:', repoData);
+        onRepoCreateAction: (repoData) => {
+          console.log('repo create button pressed:', repoData);
         },
         onHelpAction: () => {
           console.log('help needed!');
@@ -302,8 +367,8 @@ function ExampleEvents() {
 function TopBar() {
   return (
     <GitPlatformSync
-      onRepoCreated={(repoData) => {
-        console.log('repo created:', repoData);
+      onRepoCreateAction={(repoData) => {
+        console.log('repo create button pressed:', repoData);
       }}
       // Adds a 'Help me get started' button that you can
       // handle to describe the process to your users
