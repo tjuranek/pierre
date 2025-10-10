@@ -28,23 +28,10 @@ export default defineConfig(() => {
           }
         }
 
-        // Handle /react path - serve React version
-        if (req.url === '/react' || req.url === '/react/') {
-          const htmlPath = resolve(__dirname, 'index-react.html');
-          try {
-            const htmlContent = fs.readFileSync(htmlPath, 'utf-8');
-            const html = await server.transformIndexHtml('/react', htmlContent);
-            res.setHeader('Content-Type', 'text/html');
-            res.end(html);
-            return;
-          } catch (e) {
-            console.error('Error transforming React HTML:', e);
-          }
-        }
-
         next();
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       server.middlewares.use('/', handleRoutes);
     },
     configurePreviewServer(server: PreviewServer) {
@@ -52,6 +39,7 @@ export default defineConfig(() => {
         req: IncomingMessage,
         res: ServerResponse,
         next: () => void
+        // eslint-disable-next-line @typescript-eslint/require-await
       ) => {
         // Handle root path - serve vanilla version
         if (req.url === '/' || req.url === '/index.html') {
@@ -66,22 +54,10 @@ export default defineConfig(() => {
           }
         }
 
-        // Handle /react path - serve React version
-        if (req.url === '/react' || req.url === '/react/') {
-          const htmlPath = resolve(__dirname, 'dist/index-react.html');
-          try {
-            const htmlContent = fs.readFileSync(htmlPath, 'utf-8');
-            res.setHeader('Content-Type', 'text/html');
-            res.end(htmlContent);
-            return;
-          } catch (e) {
-            console.error('Error serving React HTML:', e);
-          }
-        }
-
         next();
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       server.middlewares.use('/', handleRoutes);
     },
   });
@@ -92,7 +68,6 @@ export default defineConfig(() => {
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'index.html'),
-          react: resolve(__dirname, 'index-react.html'),
         },
       },
     },
