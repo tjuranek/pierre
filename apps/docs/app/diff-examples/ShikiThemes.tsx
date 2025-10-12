@@ -171,13 +171,12 @@ export function ShikiThemes() {
         </ButtonGroup>
       </div>
       <FileDiff
-        key={`${selectedDarkTheme}-${selectedLightTheme}-${selectedColorMode}`}
         oldFile={OLD_FILE}
         newFile={NEW_FILE}
         options={{
           detectLanguage: true,
           diffStyle: 'unified',
-          themeType: selectedColorMode,
+          themeMode: selectedColorMode,
           themes: {
             dark: selectedDarkTheme,
             light: selectedLightTheme,

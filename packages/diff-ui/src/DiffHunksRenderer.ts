@@ -1,15 +1,19 @@
+import { type ChangeObject, diffChars, diffWordsWithSpace } from 'diff';
+import type { Element, ElementContent, Root, RootContent } from 'hast';
+import { toHtml } from 'hast-util-to-html';
 import type {
+  BundledTheme,
   CodeToHastOptions,
   DecorationItem,
   HighlighterGeneric,
   ShikiTransformer,
-} from '@shikijs/core';
-import { type ChangeObject, diffChars, diffWordsWithSpace } from 'diff';
-import type { Element, ElementContent, Root, RootContent } from 'hast';
-import { toHtml } from 'hast-util-to-html';
-import type { BundledTheme } from 'shiki';
+} from 'shiki';
 
-import { getSharedHighlighter } from './SharedHighlighter';
+import {
+  getSharedHighlighter,
+  hasLoadedLanguage,
+  hasLoadedThemes,
+} from './SharedHighlighter';
 import type {
   BaseRendererOptions,
   FileDiffMetadata,
@@ -17,8 +21,8 @@ import type {
   Hunk,
   LineAnnotation,
   SupportedLanguages,
+  ThemeModes,
   ThemeRendererOptions,
-  ThemeTypes,
   ThemesRendererOptions,
 } from './types';
 import {
@@ -163,21 +167,21 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     this.options = { ...this.options, ...options };
   }
 
-  setThemeType(themeType: ThemeTypes) {
-    if (this.getOptionsWithDefaults().themeType === themeType) {
+  setThemeMode(themeMode: ThemeModes) {
+    if (this.getOptionsWithDefaults().themeMode === themeMode) {
       return;
     }
-    this.mergeOptions({ themeType });
+    this.mergeOptions({ themeMode });
     if (this.pre == null) {
       return;
     }
-    switch (themeType) {
+    switch (themeMode) {
       case 'system':
-        delete this.pre.dataset.theme;
+        delete this.pre.dataset.themeMode;
         break;
       case 'light':
       case 'dark':
-        this.pre.dataset.theme = themeType;
+        this.pre.dataset.themeMode = themeMode;
         break;
     }
   }
@@ -211,7 +215,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       maxLineLengthForHighlighting = 1000,
       overflow = 'scroll',
       theme,
-      themeType = 'system',
+      themeMode = 'system',
       themes,
     } = this.options;
     if (themes != null) {
@@ -222,7 +226,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         maxLineDiffLength,
         maxLineLengthForHighlighting,
         overflow,
-        themeType,
+        themeMode,
         themes,
       };
     }
@@ -233,8 +237,8 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       maxLineDiffLength,
       maxLineLengthForHighlighting,
       overflow,
+      themeMode,
       theme,
-      themeType,
     };
   }
 
@@ -251,6 +255,16 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       return this.queuedRender;
     }
     this.queuedRender = (async () => {
+      // If we have changed theme or language on our diff instance, we need to
+      // double check the highlighter has loaded the appropriate languages and
+      // themes
+      if (
+        !hasLoadedLanguage(this.options.lang ?? 'text') ||
+        !hasLoadedThemes(this.getThemes())
+      ) {
+        this.highlighter = undefined;
+      }
+
       this.highlighter ??= await this.initializeHighlighter();
       if (this.queuedRenderArgs == null) {
         // If we get in here, it's likely we called cleanup and therefore we
@@ -276,7 +290,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       theme,
       diffStyle,
       disableLineNumbers,
-      themeType,
+      themeMode,
     } = this.getOptionsWithDefaults();
     const unified = diffStyle === 'unified';
     const split = unified
@@ -285,8 +299,8 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     const wrap = overflow === 'wrap';
     pre = setupPreNode(
       themes != null
-        ? { highlighter, pre, split, themeType, themes, wrap }
-        : { highlighter, pre, split, theme, themeType, wrap }
+        ? { highlighter, pre, split, themeMode, themes, wrap }
+        : { highlighter, pre, split, theme, themeMode, wrap }
     );
 
     this.diff = diff;
@@ -1065,6 +1079,19 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       themes.push(_themes.light);
     }
     return { langs, themes, preferWasmHighlighter };
+  }
+
+  private getThemes(): BundledTheme[] {
+    const themes: BundledTheme[] = [];
+    const { theme, themes: _themes } = this.options;
+    if (theme != null) {
+      themes.push(theme);
+    }
+    if (_themes != null) {
+      themes.push(_themes.dark);
+      themes.push(_themes.light);
+    }
+    return themes;
   }
 }
 

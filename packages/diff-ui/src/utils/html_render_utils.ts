@@ -9,8 +9,9 @@ import {
 
 import type {
   FileDiffMetadata,
+  FileTypes,
   RenderCustomFileMetadata,
-  ThemeTypes,
+  ThemeModes,
   ThemesType,
 } from '../types';
 
@@ -53,7 +54,7 @@ interface SetupWrapperBase {
   highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
   split?: boolean;
   wrap?: boolean;
-  themeType?: ThemeTypes;
+  themeMode?: ThemeModes;
 }
 
 interface SetupWrapperTheme extends ThemeVariant, SetupWrapperBase {}
@@ -93,6 +94,38 @@ export function createHunkSeparator() {
   return separator;
 }
 
+interface GetHighlighterThemeStylesProps {
+  theme?: BundledTheme;
+  themes?: { dark: BundledTheme; light: BundledTheme };
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
+  prefix?: string;
+}
+
+function getHighlighterThemeStyles({
+  theme,
+  themes,
+  highlighter,
+  prefix,
+}: GetHighlighterThemeStylesProps) {
+  let styles = '';
+  if (theme != null) {
+    const themeData = highlighter.getTheme(theme);
+    styles += `color:${themeData.fg};`;
+    styles += `background-color:${themeData.bg};`;
+    styles += `${formatCSSVariablePrefix(prefix)}fg:${themeData.fg};`;
+    styles += `${formatCSSVariablePrefix(prefix)}bg:${themeData.bg};`;
+  } else if (themes != null) {
+    let themeData = highlighter.getTheme(themes.dark);
+    styles += `${formatCSSVariablePrefix(prefix)}dark:${themeData.fg};`;
+    styles += `${formatCSSVariablePrefix(prefix)}dark-bg:${themeData.bg};`;
+
+    themeData = highlighter.getTheme(themes.light);
+    styles += `${formatCSSVariablePrefix(prefix)}light:${themeData.fg};`;
+    styles += `${formatCSSVariablePrefix(prefix)}light-bg:${themeData.bg};`;
+  }
+  return styles;
+}
+
 function setWrapperProps(
   {
     pre,
@@ -101,29 +134,24 @@ function setWrapperProps(
     themes,
     split = false,
     wrap = false,
-    themeType = 'system',
+    themeMode = 'system',
   }: SetupWrapperNodesProps,
   prefix?: string
 ) {
-  let styles = '';
-  if (themeType !== 'system') {
-    pre.dataset.theme = themeType;
+  const styles = getHighlighterThemeStyles({
+    theme,
+    themes,
+    highlighter,
+    prefix,
+  });
+  if (themeMode === 'system') {
+    delete pre.dataset.themeMode;
+  } else {
+    pre.dataset.themeMode = themeMode;
   }
   if (theme != null) {
     const themeData = highlighter.getTheme(theme);
-    styles += `color:${themeData.fg};`;
-    styles += `background-color:${themeData.bg};`;
-    styles += `${formatCSSVariablePrefix(prefix)}fg:${themeData.fg};`;
-    styles += `${formatCSSVariablePrefix(prefix)}bg:${themeData.bg};`;
-    pre.dataset.theme = themeData.type;
-  } else {
-    let themeData = highlighter.getTheme(themes.dark);
-    styles += `${formatCSSVariablePrefix(prefix)}dark:${themeData.fg};`;
-    styles += `${formatCSSVariablePrefix(prefix)}dark-bg:${themeData.bg};`;
-
-    themeData = highlighter.getTheme(themes.light);
-    styles += `${formatCSSVariablePrefix(prefix)}light:${themeData.fg};`;
-    styles += `${formatCSSVariablePrefix(prefix)}light-bg:${themeData.bg};`;
+    pre.dataset.themeMode = themeData.type;
   }
   pre.dataset.type = split ? 'split' : 'file';
   pre.dataset.overflow = wrap ? 'wrap' : 'scroll';
@@ -134,20 +162,68 @@ export function formatCSSVariablePrefix(prefix: string = 'pjs') {
   return `--${prefix}-`;
 }
 
-export function renderFileHeader(
-  file: FileDiffMetadata,
-  renderCustomMetadata?: RenderCustomFileMetadata
-): HTMLDivElement {
+export function createSVGElement<K extends keyof SVGElementTagNameMap>(
+  tagName: K
+): SVGElementTagNameMap[K] {
+  return document.createElementNS('http://www.w3.org/2000/svg', tagName);
+}
+
+function getIconForType(type: FileTypes) {
+  switch (type) {
+    case 'change':
+      return '#pjs-icon-git-modified';
+    case 'new':
+      return '#pjs-icon-git-added';
+    case 'deleted':
+      return '#pjs-icon-git-deleted';
+    case 'rename-pure':
+    case 'rename-changed':
+      return '#pjs-icon-git-moved';
+  }
+}
+
+interface RenderFileHeaderProps {
+  file: FileDiffMetadata;
+  renderCustomMetadata?: RenderCustomFileMetadata;
+  theme?: BundledTheme;
+  themes?: { dark: BundledTheme; light: BundledTheme };
+  highlighter: HighlighterGeneric<BundledLanguage, BundledTheme>;
+  prefix?: string;
+  themeMode?: ThemeModes;
+}
+
+export function renderFileHeader({
+  file,
+  theme,
+  themes,
+  themeMode,
+  highlighter,
+  prefix,
+  renderCustomMetadata,
+}: RenderFileHeaderProps): HTMLDivElement {
+  const style = getHighlighterThemeStyles({
+    theme,
+    themes,
+    highlighter,
+    prefix,
+  });
   const container = document.createElement('div');
   container.dataset.pjsHeader = '';
   container.dataset.changeType = file.type;
+  container.style = style;
+  if (themeMode != null && themeMode !== 'system') {
+    container.dataset.themeMode = themeMode;
+  }
 
   const content = document.createElement('div');
   content.dataset.headerContent = '';
 
-  // FIXME(amadeus): Replace this with icon logic
-  const icon = document.createElement('div');
-  icon.innerText = file.type.toLocaleUpperCase();
+  const icon = createSVGElement('svg');
+  icon.setAttribute('width', '16');
+  icon.setAttribute('height', '16');
+  const useEl = createSVGElement('use');
+  useEl.setAttribute('href', getIconForType(file.type));
+  icon.appendChild(useEl);
   icon.dataset.changeIcon = '';
   content.appendChild(icon);
 

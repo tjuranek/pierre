@@ -1,17 +1,22 @@
+import {
+  DiffHeaderRenderer,
+  type DiffHeaderRendererOptions,
+} from './DiffHeaderRenderer';
 import { DiffHunksRenderer } from './DiffHunksRenderer';
 import './custom-components/Container';
+import svgSprite from './sprite.txt?raw';
 import type {
   AnnotationSide,
   BaseRendererOptions,
   FileDiffMetadata,
   LineAnnotation,
   RenderCustomFileMetadata,
+  ThemeModes,
   ThemeRendererOptions,
-  ThemeTypes,
   ThemesRendererOptions,
 } from './types';
 import { getFiletypeFromFileName } from './utils/getFiletypeFromFileName';
-import { renderFileHeader } from './utils/html_render_utils';
+import { createSVGElement } from './utils/html_render_utils';
 
 interface FileDiffRenderProps {
   lang?: BaseRendererOptions['lang'];
@@ -75,10 +80,10 @@ export type DiffFileRendererOptions<LAnnotation> =
 export class DiffFileRenderer<LAnnotation = undefined> {
   options: DiffFileRendererOptions<LAnnotation>;
   private fileContainer: HTMLElement | undefined;
-  private header: HTMLDivElement | undefined;
   private pre: HTMLPreElement | undefined;
 
-  hunksRenderer: DiffHunksRenderer<LAnnotation> | undefined;
+  private hunksRenderer: DiffHunksRenderer<LAnnotation> | undefined;
+  private headerRenderer: DiffHeaderRenderer | undefined;
 
   constructor(options: DiffFileRendererOptions<LAnnotation>) {
     this.options = options;
@@ -110,12 +115,13 @@ export class DiffFileRenderer<LAnnotation = undefined> {
     this.options = { ...this.options, ...options };
   }
 
-  setThemeType(themeType: ThemeTypes) {
-    if (this.options.themeType === themeType) {
+  setThemeMode(themeMode: ThemeModes) {
+    if (this.options.themeMode === themeMode) {
       return;
     }
-    this.mergeOptions({ themeType });
-    this.hunksRenderer?.setThemeType(themeType);
+    this.mergeOptions({ themeMode });
+    this.hunksRenderer?.setThemeMode(themeMode);
+    this.headerRenderer?.setThemeMode(themeMode);
   }
 
   private lineAnnotations: LineAnnotation<LAnnotation>[] = [];
@@ -125,9 +131,12 @@ export class DiffFileRenderer<LAnnotation = undefined> {
 
   cleanUp() {
     this.fileContainer?.parentNode?.removeChild(this.fileContainer);
+    this.hunksRenderer?.cleanUp();
+    this.headerRenderer?.cleanUp();
     this.fileContainer = undefined;
+    this.hunksRenderer = undefined;
     this.pre = undefined;
-    this.header = undefined;
+    this.headerRenderer = undefined;
     this.fileDiff = undefined;
   }
 
@@ -146,7 +155,6 @@ export class DiffFileRenderer<LAnnotation = undefined> {
       wrapper.appendChild(fileContainer);
     }
     const pre = this.getOrCreatePre(fileContainer);
-    this.renderHeader(fileDiff, fileContainer);
     if (this.hunksRenderer == null) {
       this.hunksRenderer = new DiffHunksRenderer({ ...this.options, lang });
     } else {
@@ -155,7 +163,11 @@ export class DiffFileRenderer<LAnnotation = undefined> {
     this.fileDiff = fileDiff;
     // This is kinda jank, lol
     this.hunksRenderer.setLineAnnotations(this.lineAnnotations);
-    await this.hunksRenderer.render(this.fileDiff, pre);
+
+    await Promise.all([
+      this.renderHeader(fileDiff, fileContainer),
+      this.hunksRenderer.render(this.fileDiff, pre),
+    ]);
 
     for (const element of this.annotationElements) {
       element.parentNode?.removeChild(element);
@@ -177,6 +189,7 @@ export class DiffFileRenderer<LAnnotation = undefined> {
     }
   }
 
+  spriteSVG: SVGElement | undefined;
   getOrCreateFileContainer(fileContainer?: HTMLElement) {
     if (
       (fileContainer != null && fileContainer === this.fileContainer) ||
@@ -186,6 +199,13 @@ export class DiffFileRenderer<LAnnotation = undefined> {
     }
     this.fileContainer =
       fileContainer ?? document.createElement('pjs-container');
+    if (this.spriteSVG == null) {
+      this.spriteSVG = createSVGElement('svg');
+      this.spriteSVG.innerHTML = svgSprite;
+      this.spriteSVG.style.display = 'none';
+      this.spriteSVG.setAttribute('aria-hidden', 'true');
+      this.fileContainer.shadowRoot?.appendChild(this.spriteSVG);
+    }
     const { onLineClick, onLineEnter, onLineLeave } = this.options;
     if (onLineClick != null) {
       this.fileContainer.addEventListener('click', this.handleMouseClick);
@@ -293,20 +313,25 @@ export class DiffFileRenderer<LAnnotation = undefined> {
 
   // NOTE(amadeus): We just always do a full re-render with the header...
   // FIXME(amadeus): This should mb be a custom component?
-  private renderHeader(file: FileDiffMetadata, container: HTMLElement) {
+  private async renderHeader(file: FileDiffMetadata, container: HTMLElement) {
     const { renderCustomMetadata, disableFileHeader = false } = this.options;
     if (disableFileHeader) {
-      if (this.header != null) {
-        this.header.parentNode?.removeChild(this.header);
-      }
+      this.headerRenderer?.cleanUp();
+      this.headerRenderer = undefined;
       return;
     }
-    const newHeader = renderFileHeader(file, renderCustomMetadata);
-    if (this.header != null) {
-      container.shadowRoot?.replaceChild(newHeader, this.header);
+
+    const { theme, themes, themeMode } = this.options;
+    const options: DiffHeaderRendererOptions =
+      theme != null
+        ? { theme, renderCustomMetadata, themeMode }
+        : { themes, renderCustomMetadata, themeMode };
+    if (this.headerRenderer == null) {
+      this.headerRenderer ??= new DiffHeaderRenderer(options);
     } else {
-      container.shadowRoot?.prepend(newHeader);
+      this.headerRenderer.setOptions(options);
     }
-    this.header = newHeader;
+
+    await this.headerRenderer.render(file, container);
   }
 }
