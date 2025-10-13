@@ -36,9 +36,8 @@ export class DiffHeaderRenderer {
   constructor(public options: DiffHeaderRendererOptions) {}
 
   cleanUp() {
-    this.headerInstance?.parentNode?.removeChild(this.headerInstance);
     this.highlighter = undefined;
-    this.queuedRenderArgs = undefined;
+    this.queuedRenderDiff = undefined;
     this.queuedRender = undefined;
   }
 
@@ -56,18 +55,6 @@ export class DiffHeaderRenderer {
       return;
     }
     this.mergeOptions({ themeMode });
-    if (this.headerInstance == null) {
-      return;
-    }
-    switch (themeMode) {
-      case 'system':
-        delete this.headerInstance.dataset.themeMode;
-        break;
-      case 'light':
-      case 'dark':
-        this.headerInstance.dataset.themeMode = themeMode;
-        break;
-    }
   }
 
   private async initializeHighlighter() {
@@ -87,11 +74,11 @@ export class DiffHeaderRenderer {
     return { themes, langs: [] };
   }
 
-  private diff: FileDiffMetadata | undefined;
-  private queuedRenderArgs: [FileDiffMetadata, HTMLElement] | undefined;
-  private queuedRender: Promise<void> | undefined;
-  async render(diff: FileDiffMetadata, wrapper: HTMLElement) {
-    this.queuedRenderArgs = [diff, wrapper];
+  diff: FileDiffMetadata | undefined;
+  private queuedRenderDiff: FileDiffMetadata | undefined;
+  private queuedRender: Promise<string | undefined> | undefined;
+  async render(diff: FileDiffMetadata): Promise<string | undefined> {
+    this.queuedRenderDiff = diff;
     if (this.queuedRender != null) {
       return this.queuedRender;
     }
@@ -100,37 +87,32 @@ export class DiffHeaderRenderer {
         this.highlighter = undefined;
       }
       this.highlighter ??= await this.initializeHighlighter();
-      if (this.queuedRenderArgs == null) {
+      if (this.queuedRenderDiff == null) {
         // If we get in here, it's likely we called cleanup and therefore we
-        // should just return early
-        return;
+        // should just return early with empty result
+        return undefined;
       }
-      const [diff, wrapper] = this.queuedRenderArgs;
-      this.queuedRenderArgs = undefined;
-      this.diff = diff;
-      this.renderHeader(this.diff, wrapper, this.highlighter);
+      return this.renderHeader(this.queuedRenderDiff, this.highlighter);
     })();
-    await this.queuedRender;
+    const result = await this.queuedRender;
+    this.queuedRenderDiff = undefined;
     this.queuedRender = undefined;
+    return result;
   }
 
-  private headerInstance: HTMLElement | undefined;
   private renderHeader(
     diff: FileDiffMetadata,
-    wrapper: HTMLElement,
     highlighter: HighlighterGeneric<SupportedLanguages, BundledTheme>
-  ) {
-    const newHeader = renderFileHeader({
+  ): string {
+    this.diff = diff;
+    const header = renderFileHeader({
       ...this.options,
       file: diff,
       highlighter,
     });
-    if (this.headerInstance != null) {
-      wrapper.shadowRoot?.replaceChild(newHeader, this.headerInstance);
-    } else {
-      wrapper.shadowRoot?.prepend(newHeader);
-    }
-    this.headerInstance = newHeader;
+
+    // FIXME(amadeus): This is hacky af lol
+    return header.outerHTML;
   }
 
   private getThemes(): BundledTheme[] {

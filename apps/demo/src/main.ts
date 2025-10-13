@@ -1,6 +1,6 @@
 import {
   CodeRenderer,
-  DiffFileRenderer,
+  FileDiff,
   type ParsedPatch,
   type SupportedLanguages,
   getFiletypeFromFileName,
@@ -72,7 +72,7 @@ async function handlePreloadDiff() {
   });
 }
 
-const diffInstances: DiffFileRenderer<LineCommentMetadata>[] = [];
+const diffInstances: FileDiff<LineCommentMetadata>[] = [];
 function renderDiff(parsedPatches: ParsedPatch[]) {
   const wrapper = document.getElementById('wrapper');
   if (wrapper == null) return;
@@ -113,7 +113,7 @@ function renderDiff(parsedPatches: ParsedPatch[]) {
     let hunkIndex = 0;
     for (const fileDiff of parsedPatch.files) {
       const fileAnnotations = patchAnnotations[hunkIndex];
-      const instance = new DiffFileRenderer<LineCommentMetadata>({
+      const instance = new FileDiff<LineCommentMetadata>({
         themes: { dark: 'tokyo-night', light: 'solarized-light' },
         diffStyle: unified ? 'unified' : 'split',
         detectLanguage: true,
@@ -207,6 +207,7 @@ if (wrapCheckbox != null) {
         ...instance.options,
         overflow: checked ? 'wrap' : 'scroll',
       });
+      instance.rerender();
     }
   });
 }
@@ -220,6 +221,7 @@ if (unifiedCheckbox instanceof HTMLInputElement) {
         ...instance.options,
         diffStyle: checked ? 'unified' : 'split',
       });
+      instance.rerender();
     }
   });
 }
