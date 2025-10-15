@@ -1,4 +1,14 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,17 +22,222 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import type * as PopoverPrimitive from '@radix-ui/react-popover';
-import { AlertCircle, BookOpen, ChevronDown, Loader2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-
-import { ComboBox } from './combobox';
 import {
   type GitHubConnectionStatus,
+  generateOwnerOptions,
   useGitHubAppConnection,
-} from './github/github-app-connect';
-import { GitHubIcon } from './github/icon';
-import { generateOwnerOptions, useOwners } from './github/owners';
+  useOwners,
+} from '@/registry/new-york/blocks/git-platform-sync/lib/github-app-connect';
+import type * as PopoverPrimitive from '@radix-ui/react-popover';
+import {
+  AlertCircle,
+  BookOpen,
+  CheckIcon,
+  ChevronDown,
+  ChevronsUpDownIcon,
+  Loader2,
+  PlusIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+export const GitHubIcon = ({
+  className,
+  ...props
+}: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={cn('h-full w-auto', className)}
+    {...props}
+  >
+    <path
+      d="M8 0C12.42 0 16 3.58 16 8C15.9996 9.6762 15.4735 11.3101 14.4958 12.6716C13.5182 14.0332 12.1381 15.0539 10.55 15.59C10.15 15.67 10 15.42 10 15.21C10 14.94 10.01 14.08 10.01 13.01C10.01 12.26 9.76 11.78 9.47 11.53C11.25 11.33 13.12 10.65 13.12 7.58C13.12 6.7 12.81 5.99 12.3 5.43C12.38 5.23 12.66 4.41 12.22 3.31C12.22 3.31 11.55 3.09 10.02 4.13C9.38 3.95 8.7 3.86 8.02 3.86C7.34 3.86 6.66 3.95 6.02 4.13C4.49 3.1 3.82 3.31 3.82 3.31C3.38 4.41 3.66 5.23 3.74 5.43C3.23 5.99 2.92 6.71 2.92 7.58C2.92 10.64 4.78 11.33 6.56 11.53C6.33 11.73 6.12 12.08 6.05 12.6C5.59 12.81 4.44 13.15 3.72 11.94C3.57 11.7 3.12 11.11 2.49 11.12C1.82 11.13 2.22 11.5 2.5 11.65C2.84 11.84 3.23 12.55 3.32 12.78C3.48 13.23 4 14.09 6.01 13.72C6.01 14.39 6.02 15.02 6.02 15.21C6.02 15.42 5.87 15.66 5.47 15.59C3.87664 15.0596 2.49073 14.041 1.50889 12.6786C0.527047 11.3163 -0.000880479 9.67931 1.10231e-06 8C1.10231e-06 3.58 3.58 0 8 0Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+export type ComboBoxProps = {
+  options: {
+    value: string;
+    label: string;
+    image?: string;
+  }[];
+  className?: string;
+  initialValue?: string;
+  /**
+   * Controlled value. When provided, the component operates in controlled mode.
+   */
+  value?: string;
+  /**
+   * Callback fired when the value changes. Receives the option's value (not label).
+   */
+  onValueChange?: (value: string) => void;
+  /**
+   * @default 'fit'
+   * @description Whether to combobox expands to its container, or fits to the width of the content
+   */
+  width?: 'fit' | 'full';
+  /**
+   * @default 'Add item…'
+   * @description The label to display for the "Add item" action
+   */
+  addItemLabel?: string;
+  /**
+   * Callback function to run when "Add item" is selected. If this is not defined,
+   * then the "Add item" action will not be shown.
+   */
+  onAddItem?: () => void;
+  /**
+   * @deprecated Internal use only, not guaranteed to be supported in the future
+   * @description The container to render the popover portal in, only used for docs. This requires
+   * modifying the shadcn Popover component to accept a container prop for the portal
+   */
+  __container?: React.ComponentProps<
+    typeof PopoverPrimitive.Portal
+  >['container'];
+} & Omit<React.ComponentProps<typeof Command>, 'value' | 'onValueChange'>;
+
+export function ComboBox({
+  options,
+  className,
+  width = 'fit',
+  __container,
+  initialValue,
+  value: controlledValue,
+  onAddItem,
+  addItemLabel,
+  onValueChange,
+  ...props
+}: ComboBoxProps) {
+  // We want to make sure the container internal stuff doesn't blow up anyone's types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const containerProp: any =
+    __container != null ? { container: __container } : {};
+  const [open, setOpen] = useState(false);
+  const [internalValue, setInternalValue] = useState(
+    initialValue ?? options[0]?.value ?? null
+  );
+
+  // Use controlled value if provided, otherwise use internal state
+  const isControlled = controlledValue !== undefined;
+  const value = isControlled ? controlledValue : internalValue;
+
+  const selectedOption =
+    value != null && value.trim() !== ''
+      ? options.find((option) => {
+          return option.value === value;
+        })
+      : null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            'justify-between select-none gap-1.5',
+            width === 'fit' && '[&[role=combobox]]:w-fit',
+            width === 'full' && '[&[role=combobox]]:w-full',
+            className
+          )}
+        >
+          {selectedOption != null ? (
+            <span className="flex items-center gap-1.5 overflow-hidden">
+              {(selectedOption.image ?? '').trim() !== '' ? (
+                <img
+                  src={selectedOption.image}
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 rounded-full"
+                />
+              ) : null}
+              <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                {selectedOption.label}
+              </span>
+            </span>
+          ) : null}
+          <ChevronsUpDownIcon className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        {...containerProp}
+        align="start"
+        className="w-[220px] p-0"
+      >
+        <Command {...props}>
+          {/* TODO: search is silly when there are only 1-5 options */}
+          <CommandInput placeholder="Search…" />
+          <CommandList>
+            <CommandEmpty>No results</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  keywords={[option.label]}
+                  onSelect={(currentValue) => {
+                    const newValue = currentValue;
+
+                    // Update internal state if uncontrolled
+                    if (!isControlled) {
+                      setInternalValue(newValue);
+                    }
+
+                    // Always call onValueChange if provided
+                    if (newValue !== value) {
+                      onValueChange?.(newValue);
+                    }
+
+                    setOpen(false);
+                  }}
+                >
+                  {(option.image ?? '').trim() !== '' ? (
+                    <img
+                      src={option.image}
+                      aria-hidden
+                      className="h-4 w-4 flex-shrink-0 rounded-full"
+                    />
+                  ) : null}
+                  <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
+                    {option.label}
+                  </span>
+                  <CheckIcon
+                    className={cn(
+                      'mr-2 h-4 w-4 flex-shrink-0',
+                      value === option.value ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {onAddItem != null ? (
+              <>
+                <CommandSeparator />
+                <CommandGroup aria-label="Additional actions">
+                  <CommandItem
+                    onSelect={() => {
+                      setOpen(false);
+                      onAddItem?.();
+                      return false;
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <PlusIcon className="h-4 w-4 flex-shrink-0" />
+                      {addItemLabel ?? 'Add item…'}
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            ) : null}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // TODO: determine if this is the canonical way to import other components inside of a block
 
@@ -522,6 +737,7 @@ function StepManage({ codeStorageRepo, __container }: StepManageProps) {
         codeStorageRepo.repository.owner,
         owner
       );
+
       setSelectedOwnerId(owner?.id ?? null);
     }
   }, [owners, codeStorageRepo.repository.owner, getOwnerByName]);

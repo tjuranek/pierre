@@ -20,24 +20,12 @@
       "dependencies": ["@pierre/storage-elements-next"],
       "files": [
         {
-          "path": "registry/new-york/blocks/git-platform-sync/git-platform-sync.tsx",
+          "path": "registry/new-york/blocks/git-platform-sync/components/git-platform-sync.tsx",
           "type": "registry:component"
         },
         {
-          "path": "registry/new-york/blocks/git-platform-sync/combobox.tsx",
-          "type": "registry:component"
-        },
-        {
-          "path": "registry/new-york/blocks/git-platform-sync/github/icon.tsx",
-          "type": "registry:component"
-        },
-        {
-          "path": "registry/new-york/blocks/git-platform-sync/github/github-app-connect.ts",
-          "type": "registry:component"
-        },
-        {
-          "path": "registry/new-york/blocks/git-platform-sync/github/owners.ts",
-          "type": "registry:component"
+          "path": "registry/new-york/blocks/git-platform-sync/lib/github-app-connect.ts",
+          "type": "registry:lib"
         },
         {
           "path": "registry/new-york/blocks/git-platform-sync/pages/success/page.tsx",
