@@ -73,6 +73,7 @@
         "react": "catalog:",
         "react-dom": "catalog:",
         "shadcn": "catalog:",
+        "shiki": "catalog:",
         "sonner": "catalog:",
         "tailwind-merge": "catalog:",
         "tailwindcss": "catalog:",
@@ -92,7 +93,7 @@
     },
     "packages/precision-diffs": {
       "name": "@pierre/precision-diffs",
-      "version": "0.0.1-alpha.0",
+      "version": "0.0.1-alpha.1-1",
       "dependencies": {
         "@shikijs/core": "catalog:",
         "diff": "catalog:",
