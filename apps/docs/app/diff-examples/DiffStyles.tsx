@@ -28,12 +28,12 @@ import { FeatureHeader } from './FeatureHeader';
 const OLD_FILE: FileContents = {
   name: 'main.zig',
   contents: `const std = @import("std");
-const allocator = std.heap.page_allocator;
+const Allocator = std.heap.page_allocator;
 const ArrayList = std.ArrayList;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Hello, {s}!\\n", .{"World"});
+    try stdout.print("Hi You, {s}!\\n", .{"World"});
 
     var list = ArrayList(i32).init(allocator);
     defer list.deinit();
@@ -53,7 +53,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Hello, {s}!\\n", .{"Zig"});
+    try stdout.print("Hello There, {s}!\\n", .{"Zig"});
 
     var list = ArrayList(i32).init(allocator);
     defer list.deinit();
@@ -216,7 +216,7 @@ export function DiffStyles() {
         className="rounded-lg overflow-hidden border"
         options={{
           theme: 'pierre-dark',
-          diffStyle: 'unified',
+          diffStyle: 'split',
           diffIndicators,
           disableBackground,
           overflow: overflow,

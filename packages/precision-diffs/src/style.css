@@ -174,7 +174,7 @@ code {
     --pjs-bg-deletion-emphasis-override,
     light-dark(
       rgb(from var(--pjs-deletion-base) r g b / 0.15),
-      rgb(from var(--pjs-deletion-base) r g b / 0.1)
+      rgb(from var(--pjs-deletion-base) r g b / 0.2)
     )
   );
 
@@ -203,7 +203,7 @@ code {
     --pjs-bg-addition-emphasis-override,
     light-dark(
       rgb(from var(--pjs-addition-base) r g b / 0.15),
-      rgb(from var(--pjs-addition-base) r g b / 0.1)
+      rgb(from var(--pjs-addition-base) r g b / 0.2)
     )
   );
 
