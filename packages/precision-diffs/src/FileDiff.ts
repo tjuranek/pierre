@@ -161,7 +161,7 @@ export class FileDiff<LAnnotation = undefined> {
     options: DiffFileRendererOptions<LAnnotation> = { theme: 'none' }
   ) {
     this.options = options;
-    this.hunksRenderer?.setOptions(this.options);
+    this.hunksRenderer.setOptions(this.options);
   }
 
   async rerender() {

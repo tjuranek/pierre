@@ -755,7 +755,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
             ? { content: unifiedContent, lineInfo: unifiedLineInfo }
             : { content: deletionContent, lineInfo: deletionLineInfo })();
         const span = createSingleAnnotationSpan({
-          rowNumber: deletionLineNumber,
+          rowNumber: deletionLineNumber + 1,
           hunkIndex,
           diffLineIndex,
           annotationMap: this.deletionAnnotations,
@@ -780,7 +780,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
             ? { content: unifiedContent, lineInfo: unifiedLineInfo }
             : { content: additionContent, lineInfo: additionLineInfo })();
         const span = createSingleAnnotationSpan({
-          rowNumber: additionLineNumber,
+          rowNumber: additionLineNumber + 1,
           hunkIndex,
           diffLineIndex,
           annotationMap: this.additionAnnotations,
