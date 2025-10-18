@@ -52,10 +52,14 @@ export function VanillaAPI() {
       <h4>DiffHunksRenderer</h4>
       <p>
         Essentially a class that takes <code>FileDiffMetadata</code> data
-        structure and can render out the raw lines of code as HTML. You can
-        generate <code>FileDiffMetadata</code> via{' '}
-        <code>parseDiffFromFile</code> or <code>parsePatchFiles</code> utility
-        functions.
+        structure and can render out the raw{' '}
+        <a href="https://github.com/syntax-tree/hast" target="_blank">
+          hast
+        </a>{' '}
+        elements of the code which can be subsequently rendered as html strings
+        or transformed further. You can generate <code>FileDiffMetadata</code>{' '}
+        via <code>parseDiffFromFile</code> or <code>parsePatchFiles</code>{' '}
+        utility functions.
       </p>
       <ButtonGroup
         value={hunkType}
@@ -271,11 +275,11 @@ const CODE_HUNKS_RENDERER_FILE = `import {
   parseDiffFromFile,
 } from '@pierre/precision-diffs';
 
-const renderer = new DiffHunksRenderer();
+const instance = new DiffHunksRenderer();
 
 // this API is a full replacement of any existing options, it will not merge in
 // existing options already set
-renderer.setOptions({ theme: 'github-dark', diffStyle: 'split' });
+instance.setOptions({ theme: 'github-dark', diffStyle: 'split' });
 
 // Parse diff content from 2 versions of a file
 const fileDiff: FileDiffMetadata = parseDiffFromFile(
@@ -284,14 +288,18 @@ const fileDiff: FileDiffMetadata = parseDiffFromFile(
 );
 
 // Render hunks
-const result: HunksRenderResult | undefined = await renderer.render(fileDiff);
+const result: HunksRenderResult | undefined = await instance.render(fileDiff);
 // Depending on your diffStyle settings and depending the type of changes,
-// you'll get raw text html lines for each column type. If your diffStyle is
-// 'unified', then additionsHTML and deletionsHTML will be undefined and
-// 'split' will be the inverse
-console.log(result?.additionsHTML);
-console.log(result?.deletionsHTML);
-console.log(result?.unifiedHTML);`;
+// you'll get raw hast nodes for each line for each column type based on your
+// settings. If your diffStyle is 'unified', then additionsAST and deletionsAST
+// will be undefined and 'split' will be the inverse
+console.log(result?.additionsAST);
+console.log(result?.deletionsAST);
+console.log(result?.unifiedAST);
+
+// There are 2 utility methods on the instance to render these hast nodes to
+// html, '.renderFullHTML' and '.renderPartialHTML'
+`;
 
 const CODE_HUNKS_RENDERER_PATCH_FILE = `import {
   DiffHunksRenderer,
@@ -339,11 +347,11 @@ for (const patch of patches) {
       diffStyle: 'unified',
       theme: 'pierre-dark',
     });
-    const result: HunksRenderResult | undefined =
-      await instance.render(fileDiff); // returns raw strings of html based on your settings
+    const result: HunksRenderResult | undefined = await instance.render(fileDiff); 
+
     // Depending on your diffStyle settings and depending the type of changes,
     // you'll get raw HAST nodes for each lines for each column type. If your
-    // diffStyle is 'unified', then additionsHTML and deletionsHTML will be
+    // diffStyle is 'unified', then additionsAST and deletionsAST will be
     // undefined and if your setting is 'split' then it will be the inverse
     console.log(result.additionsAST);
     console.log(result.deletionsAST);

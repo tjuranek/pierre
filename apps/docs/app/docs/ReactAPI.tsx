@@ -50,8 +50,8 @@ export function SingleDiff() {
         return <CommentThread threadId={annotation.metadata.threadId} />;
       }}
       // Here's every property you can pass to options, with their default
-      // values if not specified. However its generally a good idea to pass a 'theme' or
-      // 'themes' property
+      // values if not specified. However its generally a good idea to pass
+      // a 'theme' or 'themes' property
       options={{
         // You can provide a 'theme' prop that maps to any
         // built in shiki theme or you can register a custom
