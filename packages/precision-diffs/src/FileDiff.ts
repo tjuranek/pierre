@@ -1,11 +1,11 @@
 import deepEquals from 'fast-deep-equal';
 import type { Element } from 'hast';
 
-import {
-  DiffHeaderRenderer,
-  type DiffHeaderRendererOptions,
-} from './DiffHeaderRenderer';
 import { DiffHunksRenderer, type HunksRenderResult } from './DiffHunksRenderer';
+import {
+  FileHeaderRenderer,
+  type FileHeaderRendererOptions,
+} from './FileHeaderRenderer';
 import { getSharedHighlighter } from './SharedHighlighter';
 import { HEADER_METADATA_SLOT_ID } from './constants';
 import './custom-components/Container';
@@ -13,50 +13,28 @@ import svgSprite from './sprite.txt?raw';
 import type {
   AnnotationSide,
   BaseRendererOptions,
+  DiffLineAnnotation,
+  DiffLineEventBaseProps,
+  FileContents,
   FileDiffMetadata,
-  LineAnnotation,
-  LineEventBaseProps,
+  ObservedAnnotationNodes,
+  ObservedGridNodes,
   PJSHighlighter,
   PJSThemeNames,
-  RenderCustomFileMetadata,
+  RenderHeaderMetadataCallback,
   ThemeRendererOptions,
   ThemeTypes,
   ThemesRendererOptions,
 } from './types';
+import { getLineAnnotationId } from './utils/getLineAnnotationId';
 import { createCodeNode, setWrapperProps } from './utils/html_render_utils';
-import {
-  type FileContents,
-  parseDiffFromFile,
-} from './utils/parseDiffFromFile';
-
-interface ObservedAnnotationNodes {
-  type: 'annotations';
-  column1: {
-    container: HTMLElement;
-    child: HTMLElement;
-    childHeight: number;
-  };
-  column2: {
-    container: HTMLElement;
-    child: HTMLElement;
-    childHeight: number;
-  };
-  currentHeight: number | 'auto';
-}
-
-interface ObservedGridNodes {
-  type: 'code';
-  codeElement: HTMLElement;
-  numberElement: HTMLElement | null;
-  codeWidth: number | 'auto';
-  numberWidth: number;
-}
+import { parseDiffFromFile } from './utils/parseDiffFromFile';
 
 interface FileDiffRenderBaseProps<LAnnotation> {
   forceRender?: boolean;
   fileContainer?: HTMLElement;
   containerWrapper?: HTMLElement;
-  lineAnnotations?: LineAnnotation<LAnnotation>[];
+  lineAnnotations?: DiffLineAnnotation<LAnnotation>[];
 }
 
 interface FileDiffRenderDiffProps<LAnnotation>
@@ -82,15 +60,15 @@ interface ExpandoEventProps {
   hunkIndex: number;
 }
 
-export interface OnLineClickProps extends LineEventBaseProps {
+export interface OnDiffLineClickProps extends DiffLineEventBaseProps {
   event: PointerEvent;
 }
 
-export interface OnLineEnterProps extends LineEventBaseProps {
+export interface OnDiffLineEnterProps extends DiffLineEventBaseProps {
   event: MouseEvent;
 }
 
-export interface OnLineLeaveProps extends LineEventBaseProps {
+export interface OnDiffLineLeaveProps extends DiffLineEventBaseProps {
   event: MouseEvent;
 }
 
@@ -100,13 +78,22 @@ type HandleMouseEventProps =
 
 interface DiffFileBaseOptions<LAnnotation> {
   disableFileHeader?: boolean;
-  renderCustomMetadata?: RenderCustomFileMetadata;
+  renderHeaderMetadata?: RenderHeaderMetadataCallback;
   renderAnnotation?(
-    annotation: LineAnnotation<LAnnotation>
+    annotation: DiffLineAnnotation<LAnnotation>
   ): HTMLElement | undefined;
-  onLineClick?(props: OnLineClickProps, fileDiff: FileDiffMetadata): unknown;
-  onLineEnter?(props: LineEventBaseProps, fileDiff: FileDiffMetadata): unknown;
-  onLineLeave?(props: LineEventBaseProps, fileDiff: FileDiffMetadata): unknown;
+  onLineClick?(
+    props: OnDiffLineClickProps,
+    fileDiff: FileDiffMetadata
+  ): unknown;
+  onLineEnter?(
+    props: DiffLineEventBaseProps,
+    fileDiff: FileDiffMetadata
+  ): unknown;
+  onLineLeave?(
+    props: DiffLineEventBaseProps,
+    fileDiff: FileDiffMetadata
+  ): unknown;
 }
 
 interface DiffFileThemeRendererOptions<LAnnotation>
@@ -129,7 +116,7 @@ export class FileDiff<LAnnotation = undefined> {
   private pre: HTMLPreElement | undefined;
 
   private hunksRenderer: DiffHunksRenderer<LAnnotation>;
-  private headerRenderer: DiffHeaderRenderer;
+  private headerRenderer: FileHeaderRenderer;
 
   private observedNodes = new Map<
     HTMLElement,
@@ -147,7 +134,7 @@ export class FileDiff<LAnnotation = undefined> {
   ) {
     this.options = options;
     this.hunksRenderer = new DiffHunksRenderer(options);
-    this.headerRenderer = new DiffHeaderRenderer(options);
+    this.headerRenderer = new FileHeaderRenderer(options);
   }
 
   // FIXME(amadeus): This is a bit of a looming issue that I'll need to resolve:
@@ -216,22 +203,24 @@ export class FileDiff<LAnnotation = undefined> {
     }
   }
 
-  private lineAnnotations: LineAnnotation<LAnnotation>[] = [];
-  setLineAnnotations(lineAnnotations: LineAnnotation<LAnnotation>[]) {
+  private lineAnnotations: DiffLineAnnotation<LAnnotation>[] = [];
+  setLineAnnotations(lineAnnotations: DiffLineAnnotation<LAnnotation>[]) {
     this.lineAnnotations = lineAnnotations;
   }
 
   cleanUp() {
-    this.fileContainer?.parentNode?.removeChild(this.fileContainer);
     this.hunksRenderer.cleanUp();
     this.headerRenderer.cleanUp();
     this.resizeObserver?.disconnect();
     this.observedNodes.clear();
-    this.fileContainer = undefined;
     this.pre = undefined;
     this.headerElement = undefined;
     this.fileDiff = undefined;
     this.resizeObserver = undefined;
+    if (!this.isReact) {
+      this.fileContainer?.parentNode?.removeChild(this.fileContainer);
+    }
+    this.fileContainer = undefined;
   }
 
   async render(props: FileDiffRenderProps<LAnnotation>) {
@@ -260,12 +249,12 @@ export class FileDiff<LAnnotation = undefined> {
       containerWrapper.appendChild(fileContainer);
     }
     const pre = this.getOrCreatePre(fileContainer);
-    this.hunksRenderer.setOptions({ ...this.options });
+    this.hunksRenderer.setOptions(this.options);
 
     // This is kinda jank, lol
     this.hunksRenderer.setLineAnnotations(this.lineAnnotations);
 
-    const { renderCustomMetadata, disableFileHeader = false } = this.options;
+    const { disableFileHeader = false } = this.options;
 
     if (disableFileHeader) {
       this.headerRenderer.cleanUp();
@@ -276,26 +265,28 @@ export class FileDiff<LAnnotation = undefined> {
       }
     } else {
       const { theme, themes, themeType } = this.options;
-      const options: DiffHeaderRendererOptions =
-        theme != null
-          ? { theme, renderCustomMetadata, themeType }
-          : { themes, renderCustomMetadata, themeType };
+      const options: FileHeaderRendererOptions =
+        theme != null ? { theme, themeType } : { themes, themeType };
       this.headerRenderer.setOptions(options);
     }
 
     const [highlighter, headerResult, hunksResult] = await Promise.all([
       getSharedHighlighter({ themes: this.getThemes(), langs: [] }),
-      this.headerRenderer.render(this.fileDiff),
+      !disableFileHeader
+        ? this.headerRenderer.render(this.fileDiff)
+        : undefined,
       this.hunksRenderer.render(this.fileDiff),
     ]);
 
     if (headerResult != null) {
-      this.applyHeaderToDOM(headerResult, fileContainer, this.fileDiff);
+      this.applyHeaderToDOM(headerResult, fileContainer);
     }
     if (hunksResult != null) {
       this.applyHunksToDOM(hunksResult, pre, highlighter);
     }
     this.setupResizeObserver(pre);
+
+    if (this.isReact) return;
 
     // Handle annotation elements
     for (const element of this.annotationElements) {
@@ -303,7 +294,6 @@ export class FileDiff<LAnnotation = undefined> {
     }
     this.annotationElements.length = 0;
 
-    if (this.isReact) return;
     const { renderAnnotation } = this.options;
     if (renderAnnotation != null && this.lineAnnotations.length > 0) {
       for (const annotation of this.lineAnnotations) {
@@ -311,7 +301,7 @@ export class FileDiff<LAnnotation = undefined> {
         if (content == null) continue;
         const el = document.createElement('div');
         el.dataset.annotationSlot = '';
-        el.slot = `${annotation.side}-${annotation.lineNumber}`;
+        el.slot = getLineAnnotationId(annotation);
         el.appendChild(content);
         this.annotationElements.push(el);
         fileContainer.appendChild(el);
@@ -367,7 +357,7 @@ export class FileDiff<LAnnotation = undefined> {
     this.handleMouseEvent({ eventType: 'click', event });
   };
 
-  hoveredRow: LineEventBaseProps | undefined;
+  hoveredRow: DiffLineEventBaseProps | undefined;
   handleMouseMove = (event: MouseEvent) => {
     this.handleMouseEvent({ eventType: 'move', event });
   };
@@ -379,7 +369,7 @@ export class FileDiff<LAnnotation = undefined> {
 
   private getLineData(
     path: EventTarget[]
-  ): LineEventBaseProps | ExpandoEventProps | undefined {
+  ): DiffLineEventBaseProps | ExpandoEventProps | undefined {
     const lineElement = path.find(
       (element) =>
         element instanceof HTMLElement &&
@@ -480,11 +470,7 @@ export class FileDiff<LAnnotation = undefined> {
 
   private headerElement: HTMLElement | undefined;
   private headerMetadata: HTMLElement | undefined;
-  private applyHeaderToDOM(
-    headerHTML: Element,
-    container: HTMLElement,
-    fileDiff: FileDiffMetadata
-  ) {
+  private applyHeaderToDOM(headerHTML: Element, container: HTMLElement) {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = this.headerRenderer.renderResultToHTML(headerHTML);
     const newHeader = tempDiv.firstElementChild;
@@ -498,11 +484,18 @@ export class FileDiff<LAnnotation = undefined> {
     }
     this.headerElement = newHeader;
 
-    const { renderCustomMetadata } = this.options;
+    if (this.isReact) return;
+
+    const { renderHeaderMetadata: renderCustomMetadata } = this.options;
     if (this.headerMetadata != null) {
       this.headerMetadata.parentNode?.removeChild(this.headerMetadata);
     }
-    const content = renderCustomMetadata?.(fileDiff) ?? undefined;
+    const content =
+      renderCustomMetadata?.({
+        oldFile: this.oldFile,
+        newFile: this.newFile,
+        fileDiff: this.fileDiff,
+      }) ?? undefined;
     if (content != null) {
       this.headerMetadata = document.createElement('div');
       this.headerMetadata.slot = HEADER_METADATA_SLOT_ID;
@@ -742,7 +735,7 @@ export class FileDiff<LAnnotation = undefined> {
       const { target, borderBoxSize } = entry;
       if (!(target instanceof HTMLElement)) {
         console.error(
-          'DiffFileRenderer.handleResizeObserver: Invalid element for ResizeObserver',
+          'FileDiff.handleResizeObserver: Invalid element for ResizeObserver',
           entry
         );
         continue;
@@ -750,7 +743,7 @@ export class FileDiff<LAnnotation = undefined> {
       const item = this.observedNodes.get(target);
       if (item == null) {
         console.error(
-          'DiffFileRenderer.handleResizeObserver: Not a valid observed node',
+          'FileDiff.handleResizeObserver: Not a valid observed node',
           entry
         );
         continue;
@@ -769,7 +762,7 @@ export class FileDiff<LAnnotation = undefined> {
 
         if (column == null) {
           console.error(
-            `DiffFileRenderer.handleResizeObserver: Couldn't find a column for`,
+            `FileDiff.handleResizeObserver: Couldn't find a column for`,
             { item, target }
           );
           continue;

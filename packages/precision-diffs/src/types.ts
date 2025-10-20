@@ -1,7 +1,6 @@
 import type {
   BundledLanguage,
   BundledTheme,
-  CodeOptionsMultipleThemes,
   CodeToHastOptions,
   DecorationItem,
   HighlighterGeneric,
@@ -9,6 +8,14 @@ import type {
   ThemeRegistrationResolved,
   ThemedToken,
 } from 'shiki';
+
+export interface FileContents {
+  name: string;
+  contents: string;
+  // Technically our diff library can take a `header` property, but we don't
+  // have any way of rendering it at the moment
+  header?: string;
+}
 
 export type {
   BundledLanguage,
@@ -42,7 +49,7 @@ export type PJSHighlighter = HighlighterGeneric<
   PJSThemeNames
 >;
 
-export type FileTypes =
+export type ChangeTypes =
   | 'change'
   | 'rename-pure'
   | 'rename-changed'
@@ -67,7 +74,7 @@ export interface Hunk {
 export interface FileDiffMetadata {
   name: string;
   prevName: string | undefined;
-  type: FileTypes;
+  type: ChangeTypes;
   hunks: Hunk[];
   lines: number;
   oldLines?: string[];
@@ -93,7 +100,6 @@ export interface BaseCodeProps {
 
   // Shiki config options
   lang?: SupportedLanguages;
-  defaultColor?: CodeOptionsMultipleThemes['defaultColor'];
   preferWasmHighlighter?: boolean;
 }
 
@@ -109,18 +115,36 @@ export interface BaseRendererOptions extends BaseCodeProps {
   maxLineLengthForHighlighting?: number; // 1000 is default
 }
 
-export type RenderCustomFileMetadata = (
-  file: FileDiffMetadata
+export interface RenderHeaderMetadataProps {
+  oldFile?: FileContents;
+  newFile?: FileContents;
+  fileDiff?: FileDiffMetadata;
+}
+
+export type RenderHeaderMetadataCallback = (
+  props: RenderHeaderMetadataProps
+) => Element | null | undefined | string | number;
+
+export type RenderFileMetadata = (
+  file: FileContents
 ) => Element | null | undefined | string | number;
 
 export type ExtensionFormatMap = Record<string, SupportedLanguages | undefined>;
 
 export type AnnotationSide = 'deletions' | 'additions';
 
+type OptionalMetadata<T> = T extends undefined
+  ? { metadata?: undefined }
+  : { metadata: T };
+
 export type LineAnnotation<T = undefined> = {
+  lineNumber: number;
+} & OptionalMetadata<T>;
+
+export type DiffLineAnnotation<T = undefined> = {
   side: AnnotationSide;
   lineNumber: number;
-} & (T extends undefined ? { metadata?: undefined } : { metadata: T });
+} & OptionalMetadata<T>;
 
 export interface GapSpan {
   type: 'gap';
@@ -130,6 +154,8 @@ export interface GapSpan {
 export type LineSpans = GapSpan | AnnotationSpan;
 
 // Types of rendered lines in a rendered diff
+// Should we have yet another type for files? seems silly for
+// use to have a type in that case?
 export type LineTypes =
   | 'change-deletion'
   | 'change-addition'
@@ -138,8 +164,8 @@ export type LineTypes =
 
 export interface LineInfo {
   type: LineTypes;
-  number: number;
-  diffLineIndex: number;
+  lineNumber: number;
+  lineIndex: number;
   metadataContent?: string;
   spans?: LineSpans[];
 }
@@ -153,14 +179,40 @@ export interface SharedRenderState {
 export interface AnnotationSpan {
   type: 'annotation';
   hunkIndex: number;
-  diffLineIndex: number;
+  lineIndex: number;
   annotations: string[];
 }
 
 export interface LineEventBaseProps {
   type: 'line';
-  annotationSide: AnnotationSide;
-  lineType: LineTypes;
   lineNumber: number;
   lineElement: HTMLElement;
+}
+
+export interface DiffLineEventBaseProps extends LineEventBaseProps {
+  annotationSide: AnnotationSide;
+  lineType: LineTypes;
+}
+
+export interface ObservedAnnotationNodes {
+  type: 'annotations';
+  column1: {
+    container: HTMLElement;
+    child: HTMLElement;
+    childHeight: number;
+  };
+  column2: {
+    container: HTMLElement;
+    child: HTMLElement;
+    childHeight: number;
+  };
+  currentHeight: number | 'auto';
+}
+
+export interface ObservedGridNodes {
+  type: 'code';
+  codeElement: HTMLElement;
+  numberElement: HTMLElement | null;
+  codeWidth: number | 'auto';
+  numberWidth: number;
 }

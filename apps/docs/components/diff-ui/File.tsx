@@ -1,10 +1,9 @@
 import {
-  type DiffFileRendererOptions,
-  type DiffLineAnnotation,
   type FileContents,
-  FileDiff as FileDiffUI,
+  type FileOptions,
+  File as FileUI,
   HEADER_METADATA_SLOT_ID,
-  type RenderHeaderMetadataProps,
+  type LineAnnotation,
   getLineAnnotationId,
 } from '@pierre/precision-diffs';
 import deepEqual from 'fast-deep-equal';
@@ -21,42 +20,38 @@ export type { FileContents };
 const useIsometricEffect =
   typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
-interface FileDiffProps<LAnnotation> {
-  oldFile: FileContents;
-  newFile: FileContents;
-  options?: DiffFileRendererOptions<LAnnotation>;
-  annotations?: DiffLineAnnotation<LAnnotation>[];
-  renderAnnotation?(annotations: DiffLineAnnotation<LAnnotation>): ReactNode;
-  renderHeaderMetadata?(props: RenderHeaderMetadataProps): ReactNode;
+interface FileProps<LAnnotation> {
+  file: FileContents;
+  options: FileOptions<LAnnotation>;
+  lineAnnotations?: LineAnnotation<LAnnotation>[];
+  renderAnnotation?(annotations: LineAnnotation<LAnnotation>): ReactNode;
+  renderHeaderMetadata?(file: FileContents): ReactNode;
   className?: string;
   style?: CSSProperties;
 }
 
-export function FileDiff<LAnnotation = undefined>({
-  oldFile,
-  newFile,
+export function File<LAnnotation = undefined>({
+  file,
+  lineAnnotations,
   options,
-  annotations,
   className,
   style,
   renderAnnotation,
   renderHeaderMetadata,
-}: FileDiffProps<LAnnotation>) {
-  'use no memo';
-  const instanceRef = useRef<FileDiffUI<LAnnotation> | null>(null);
+}: FileProps<LAnnotation>) {
+  const instanceRef = useRef<FileUI<LAnnotation> | null>(null);
   const ref = useRef<HTMLElement>(null);
-  // NOTE(amadeus): This is all a temporary hack until we can figure out proper
-  // innerHTML shadow dom stuff
+
   useIsometricEffect(() => {
-    instanceRef.current ??= new FileDiffUI<LAnnotation>(options, true);
+    if (ref.current == null) return;
+    instanceRef.current ??= new FileUI<LAnnotation>(options, true);
     const forceRender = !deepEqual(instanceRef.current.options, options);
     instanceRef.current.setOptions(options);
     void instanceRef.current.render({
+      file,
+      fileContainer: ref.current,
+      lineAnnotations,
       forceRender,
-      oldFile,
-      newFile,
-      fileContainer: ref.current ?? undefined,
-      lineAnnotations: annotations,
     });
   });
   useIsometricEffect(
@@ -66,12 +61,13 @@ export function FileDiff<LAnnotation = undefined>({
     },
     []
   );
-  const metadata = renderHeaderMetadata?.({ oldFile, newFile });
+
+  const metadata = renderHeaderMetadata?.(file);
   return (
     <pjs-container ref={ref} className={className} style={style}>
       {metadata != null && <div slot={HEADER_METADATA_SLOT_ID}>{metadata}</div>}
       {renderAnnotation != null &&
-        annotations?.map((annotation) => (
+        lineAnnotations?.map((annotation) => (
           <div
             key={getLineAnnotationId(annotation)}
             slot={getLineAnnotationId(annotation)}

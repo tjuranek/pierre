@@ -13,10 +13,10 @@ import type {
   BaseRendererOptions,
   CodeToHastOptions,
   DecorationItem,
+  DiffLineAnnotation,
   FileDiffMetadata,
   Hunk,
   HunkLineType,
-  LineAnnotation,
   LineInfo,
   LineSpans,
   PJSHighlighter,
@@ -28,22 +28,20 @@ import type {
   ThemeTypes,
   ThemesRendererOptions,
 } from './types';
+import { createTransformerWithState } from './utils/createTransformerWithState';
 import { formatCSSVariablePrefix } from './utils/formatCSSVariablePrefix';
 import { getFiletypeFromFileName } from './utils/getFiletypeFromFileName';
+import { getLineAnnotationId } from './utils/getLineAnnotationId';
 import {
-  convertLine,
-  createAnnotationElement,
-  createEmptyRowBuffer,
   createHastElement,
   createPreWrapperProperties,
   createSeparator,
-  findCodeElement,
 } from './utils/hast_utils';
 import { parseLineType } from './utils/parseLineType';
 
 type AnnotationLineMap<LAnnotation> = Record<
   number,
-  LineAnnotation<LAnnotation>[] | undefined
+  DiffLineAnnotation<LAnnotation>[] | undefined
 >;
 
 interface ChangeHunk {
@@ -86,17 +84,17 @@ interface ProcessLinesReturn {
   unified: ComputedContent;
 }
 
-interface DiffHunkThemeRendererOptions
+interface DiffHunkRendererThemeOptions
   extends BaseRendererOptions,
     ThemeRendererOptions {}
 
-interface DiffHunkThemesRendererOptions
+interface DiffHunkRendererThemesOptions
   extends BaseRendererOptions,
     ThemesRendererOptions {}
 
 export type DiffHunksRendererOptions =
-  | DiffHunkThemeRendererOptions
-  | DiffHunkThemesRendererOptions;
+  | DiffHunkRendererThemeOptions
+  | DiffHunkRendererThemesOptions;
 
 export interface HunksRenderResult {
   additionsAST: ElementContent[] | undefined;
@@ -189,7 +187,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
 
   private deletionAnnotations: AnnotationLineMap<LAnnotation> = {};
   private additionAnnotations: AnnotationLineMap<LAnnotation> = {};
-  setLineAnnotations(lineAnnotations: LineAnnotation<LAnnotation>[]) {
+  setLineAnnotations(lineAnnotations: DiffLineAnnotation<LAnnotation>[]) {
     this.additionAnnotations = {};
     this.deletionAnnotations = {};
     for (const annotation of lineAnnotations) {
@@ -368,8 +366,10 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
   }
 
   renderFullHTML(result: HunksRenderResult): string {
+    const _children = result.preNode.children;
+    const tempChildren = [..._children];
     if (result.unifiedAST != null) {
-      result.preNode.children.push(
+      tempChildren.push(
         createHastElement({
           tagName: 'code',
           children: result.unifiedAST,
@@ -381,7 +381,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       );
     }
     if (result.deletionsAST != null) {
-      result.preNode.children.push(
+      tempChildren.push(
         createHastElement({
           tagName: 'code',
           children: result.deletionsAST,
@@ -393,7 +393,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       );
     }
     if (result.additionsAST != null) {
-      result.preNode.children.push(
+      tempChildren.push(
         createHastElement({
           tagName: 'code',
           children: result.additionsAST,
@@ -404,7 +404,10 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         })
       );
     }
-    return toHtml(result.preNode);
+    result.preNode.children = tempChildren;
+    const html = toHtml(result.preNode);
+    result.preNode.children = _children;
+    return html;
   }
 
   renderPartialHTML(
@@ -436,7 +439,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         theme: this.options.theme,
         cssVariablePrefix: formatCSSVariablePrefix(),
         lang: forceTextLang ? 'text' : this.computedLang,
-        defaultColor: this.options.defaultColor ?? false,
+        defaultColor: false,
         transformers: Array.isArray(transformer) ? transformer : [transformer],
         decorations,
       };
@@ -445,7 +448,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       themes: this.options.themes,
       cssVariablePrefix: formatCSSVariablePrefix(),
       lang: forceTextLang ? 'text' : this.computedLang,
-      defaultColor: this.options.defaultColor ?? false,
+      defaultColor: false,
       transformers: Array.isArray(transformer) ? transformer : [transformer],
       decorations,
     };
@@ -515,7 +518,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
           linesAST.push(createSeparator({ type: 'empty' }));
         }
       }
-      for (const line of this.getNodesToRender(nodes)) {
+      for (const line of this.getLineNodes(nodes)) {
         linesAST.push(line);
       }
       if (
@@ -598,7 +601,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         const resolvedSpan: AnnotationSpan = {
           type: 'annotation',
           hunkIndex,
-          diffLineIndex: unresolvedSpan.span.diffLineIndex,
+          lineIndex: unresolvedSpan.span.lineIndex,
           annotations: [],
         };
         if (unresolvedSpan.type === 'addition') {
@@ -640,7 +643,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
           additionStartIndex: unified ? -1 : additionContent.length,
           deletionLines: [],
           additionLines: [],
-          diffGroupStartIndex: diffLineIndex,
+          diffGroupStartIndex: lineIndex,
         };
         diffGroups.push(currentChangeGroup);
       }
@@ -708,13 +711,13 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       type: HunkLineType,
       isExpandedContext: boolean = false
     ) => {
-      diffLineIndex++;
+      lineIndex++;
       if (type === 'context') {
         createGapSpanIfNecessary();
       }
       if (type === 'context') {
         if (currentChangeGroup != null) {
-          diffLineIndex =
+          lineIndex =
             currentChangeGroup.diffGroupStartIndex +
             Math.max(
               currentChangeGroup.additionLines.length,
@@ -726,14 +729,14 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
           unifiedContent.push(line);
           unifiedLineInfo[unifiedContent.length] = {
             type: isExpandedContext ? 'context-expanded' : 'context',
-            number: additionLineNumber + 1,
-            diffLineIndex,
+            lineNumber: additionLineNumber + 1,
+            lineIndex,
           };
           const span = createMirroredAnnotationSpan({
             deletionLineNumber: deletionLineNumber + 1,
             additionLineNumber: additionLineNumber + 1,
             hunkIndex,
-            diffLineIndex: unifiedContent.length,
+            lineIndex: unifiedContent.length,
             deletionAnnotations,
             additionAnnotations,
             unified: true,
@@ -744,19 +747,19 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
           additionContent.push(line);
           deletionLineInfo[deletionContent.length] = {
             type: isExpandedContext ? 'context-expanded' : 'context',
-            number: deletionLineNumber + 1,
-            diffLineIndex,
+            lineNumber: deletionLineNumber + 1,
+            lineIndex,
           };
           additionLineInfo[additionContent.length] = {
             type: isExpandedContext ? 'context-expanded' : 'context',
-            number: additionLineNumber + 1,
-            diffLineIndex,
+            lineNumber: additionLineNumber + 1,
+            lineIndex,
           };
           const [deletionSpan, additionSpan] = createMirroredAnnotationSpan({
             deletionLineNumber: deletionLineNumber + 1,
             additionLineNumber: additionLineNumber + 1,
             hunkIndex,
-            diffLineIndex,
+            lineIndex,
             deletionAnnotations,
             additionAnnotations,
             unified: false,
@@ -788,8 +791,8 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
                 : 'context',
           // NOTE(amadeus): Metadata lines do not have line numbers associated
           // with them
-          number: -1,
-          diffLineIndex: -1,
+          lineNumber: -1,
+          lineIndex: -1,
           metadataContent: line.trim(),
         };
         // Push a filler blank line so we have something to render
@@ -814,23 +817,22 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         const span = createSingleAnnotationSpan({
           rowNumber: deletionLineNumber + 1,
           hunkIndex,
-          diffLineIndex,
+          lineIndex,
           annotationMap: this.deletionAnnotations,
         });
         addToChangeGroup('deletion', line, span);
         content.push(line);
         lineInfo[content.length] = {
           type: 'change-deletion',
-          number: deletionLineNumber + 1,
-          diffLineIndex,
+          lineNumber: deletionLineNumber + 1,
+          lineIndex,
         };
         pushOrMergeSpan(span, content.length, lineInfo);
         deletionLineNumber++;
       } else if (type === 'addition') {
         // Reset diffLineIndex back to start if we are jumping columns
         if (lastType === 'deletion' && !unified) {
-          diffLineIndex =
-            currentChangeGroup?.diffGroupStartIndex ?? diffLineIndex;
+          lineIndex = currentChangeGroup?.diffGroupStartIndex ?? lineIndex;
         }
         const { content, lineInfo } = (() =>
           unified
@@ -839,15 +841,15 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         const span = createSingleAnnotationSpan({
           rowNumber: additionLineNumber + 1,
           hunkIndex,
-          diffLineIndex,
+          lineIndex,
           annotationMap: this.additionAnnotations,
         });
         addToChangeGroup('addition', line, span);
         content.push(line);
         lineInfo[content.length] = {
           type: 'change-addition',
-          number: additionLineNumber + 1,
-          diffLineIndex,
+          lineNumber: additionLineNumber + 1,
+          lineIndex,
         };
         pushOrMergeSpan(span, content.length, lineInfo);
         additionLineNumber++;
@@ -856,7 +858,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       lastType = type;
     };
 
-    let diffLineIndex = -1;
+    let lineIndex = -1;
     let lastType: HunkLineType | undefined;
 
     // Proses hunk expanded content if expanded
@@ -1022,7 +1024,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     return { unifiedDecorations, deletionDecorations, additionDecorations };
   }
 
-  private getNodesToRender(nodes: Root): ElementContent[] {
+  private getLineNodes(nodes: Root): ElementContent[] {
     let firstChild: RootContent | Element | Root | null = nodes.children[0];
     while (firstChild != null) {
       if (firstChild.type === 'element' && firstChild.tagName === 'code') {
@@ -1089,68 +1091,9 @@ function createDiffSpanDecoration({
   };
 }
 
-function createTransformerWithState(disableLineNumbers: boolean): {
-  state: SharedRenderState;
-  transformer: ShikiTransformer;
-} {
-  const state: SharedRenderState = {
-    lineInfo: {},
-    decorations: [],
-    disableLineNumbers,
-  };
-  return {
-    state,
-    transformer: {
-      line(hast) {
-        // Remove the default class
-        delete hast.properties.class;
-        return hast;
-      },
-      pre(pre) {
-        // NOTE(amadeus): This kinda sucks -- basically we can't apply our
-        // line node changes until AFTER decorations have been applied
-        const code = findCodeElement(pre);
-        const children: ElementContent[] = [];
-        if (code != null) {
-          let index = 1;
-          for (const node of code.children) {
-            if (node.type !== 'element') {
-              continue;
-            }
-            // Do we need to inject an empty span above the first line line?
-            if (index === 1 && state.lineInfo[0]?.spans != null) {
-              for (const span of state.lineInfo[0]?.spans ?? []) {
-                if (span.type === 'gap') {
-                  children.push(createEmptyRowBuffer(span.rows));
-                } else {
-                  children.push(createAnnotationElement(span));
-                }
-              }
-            }
-            children.push(convertLine(node, index, state));
-            const lineInfo = state.lineInfo[index];
-            if (lineInfo?.spans != null) {
-              for (const span of lineInfo.spans) {
-                if (span.type === 'gap') {
-                  children.push(createEmptyRowBuffer(span.rows));
-                } else {
-                  children.push(createAnnotationElement(span));
-                }
-              }
-            }
-            index++;
-          }
-          code.children = children;
-        }
-        return pre;
-      },
-    },
-  };
-}
-
 interface CreateSingleAnnotationProps<LAnnotation> {
   hunkIndex: number;
-  diffLineIndex: number;
+  lineIndex: number;
   rowNumber: number;
   annotationMap: AnnotationLineMap<LAnnotation>;
 }
@@ -1158,17 +1101,17 @@ interface CreateSingleAnnotationProps<LAnnotation> {
 function createSingleAnnotationSpan<LAnnotation>({
   rowNumber,
   hunkIndex,
-  diffLineIndex,
+  lineIndex,
   annotationMap,
 }: CreateSingleAnnotationProps<LAnnotation>): AnnotationSpan | undefined {
   const span: AnnotationSpan = {
     type: 'annotation',
     hunkIndex,
-    diffLineIndex,
+    lineIndex,
     annotations: [],
   };
   for (const anno of annotationMap[rowNumber] ?? []) {
-    span.annotations.push(`${anno.side}-${anno.lineNumber}`);
+    span.annotations.push(getLineAnnotationId(anno));
   }
   return span.annotations.length > 0 ? span : undefined;
 }
@@ -1177,7 +1120,7 @@ interface CreateMirroredAnnotationSpanProps<LAnnotation> {
   deletionLineNumber: number;
   additionLineNumber: number;
   hunkIndex: number;
-  diffLineIndex: number;
+  lineIndex: number;
   deletionAnnotations: AnnotationLineMap<LAnnotation>;
   additionAnnotations: AnnotationLineMap<LAnnotation>;
 }
@@ -1192,7 +1135,7 @@ function createMirroredAnnotationSpan<LAnnotation>({
   deletionLineNumber,
   additionLineNumber,
   hunkIndex,
-  diffLineIndex,
+  lineIndex,
   deletionAnnotations,
   additionAnnotations,
   unified,
@@ -1203,13 +1146,11 @@ function createMirroredAnnotationSpan<LAnnotation>({
   | undefined {
   const dAnnotations: string[] = [];
   for (const anno of deletionAnnotations[deletionLineNumber] ?? []) {
-    dAnnotations.push(`${anno.side}-${anno.lineNumber}`);
+    dAnnotations.push(getLineAnnotationId(anno));
   }
   const aAnnotations: string[] = [];
   for (const anno of additionAnnotations[additionLineNumber] ?? []) {
-    (unified ? dAnnotations : aAnnotations).push(
-      `${anno.side}-${anno.lineNumber}`
-    );
+    (unified ? dAnnotations : aAnnotations).push(getLineAnnotationId(anno));
   }
   if (aAnnotations.length === 0 && dAnnotations.length === 0) {
     if (unified) {
@@ -1221,7 +1162,7 @@ function createMirroredAnnotationSpan<LAnnotation>({
     return {
       type: 'annotation',
       hunkIndex,
-      diffLineIndex,
+      lineIndex,
       annotations: dAnnotations,
     };
   }
@@ -1229,13 +1170,13 @@ function createMirroredAnnotationSpan<LAnnotation>({
     {
       type: 'annotation',
       hunkIndex,
-      diffLineIndex,
+      lineIndex,
       annotations: dAnnotations,
     },
     {
       type: 'annotation',
       hunkIndex,
-      diffLineIndex,
+      lineIndex,
       annotations: aAnnotations,
     },
   ];
@@ -1255,8 +1196,8 @@ function pushOrMergeSpan(
   if (lineInfo == null && index === 0 && span.type === 'gap') {
     lineInfo = {
       type: 'context',
-      number: -1,
-      diffLineIndex: -1,
+      lineNumber: -1,
+      lineIndex: -1,
       spans: [],
     };
     spanMap[0] = lineInfo;
@@ -1280,10 +1221,7 @@ function pushOrMergeSpan(
     let merged = false;
     for (const item of spans) {
       if (item.type === 'annotation') {
-        if (
-          span.type === 'annotation' &&
-          span.diffLineIndex === item.diffLineIndex
-        ) {
+        if (span.type === 'annotation' && span.lineIndex === item.lineIndex) {
           merged = true;
           item.annotations = mergeAnnotations(
             item.annotations,
@@ -1300,7 +1238,7 @@ function pushOrMergeSpan(
     }
     const spanMarkers: (AnnotationSpan | 0)[] = new Array(gapSize).fill(0);
     for (const annotation of annotations) {
-      const annotationIndex = annotation.diffLineIndex - lineInfo.diffLineIndex;
+      const annotationIndex = annotation.lineIndex - lineInfo.lineIndex;
       const currentItem = spanMarkers[annotationIndex];
       if (currentItem === 0 || currentItem == null) {
         spanMarkers.splice(annotationIndex, 0, annotation);

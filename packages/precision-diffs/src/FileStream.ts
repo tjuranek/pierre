@@ -21,8 +21,8 @@ import {
 interface CodeTokenOptionsBase extends BaseCodeProps {
   startingLineIndex?: number;
 
-  onPreRender?(instance: CodeRenderer): unknown;
-  onPostRender?(instance: CodeRenderer): unknown;
+  onPreRender?(instance: FileStream): unknown;
+  onPostRender?(instance: FileStream): unknown;
 
   onStreamStart?(controller: WritableStreamDefaultController): unknown;
   onStreamWrite?(token: ThemedToken | RecallToken): unknown;
@@ -40,21 +40,25 @@ interface CodeTokenOptionsMultiThemes extends CodeTokenOptionsBase {
   themes: ThemesType;
 }
 
-export type CodeRendererOptions =
+export type FileStreamOptions =
   | CodeTokenOptionsSingleTheme
   | CodeTokenOptionsMultiThemes;
 
-export class CodeRenderer {
+export class FileStream {
   private highlighter: PJSHighlighter | undefined;
-  options: CodeRendererOptions;
+  options: FileStreamOptions;
   private stream: ReadableStream<string> | undefined;
   private fileContainer: HTMLElement | undefined;
   pre: HTMLPreElement | undefined;
   private code: HTMLElement | undefined;
 
-  constructor(options: CodeRendererOptions) {
+  constructor(options: FileStreamOptions) {
     this.options = options;
     this.currentLineIndex = this.options.startingLineIndex ?? 1;
+  }
+
+  cleanUp() {
+    void this.stream?.cancel();
   }
 
   setThemeType(themeType: ThemeTypes) {
@@ -82,10 +86,8 @@ export class CodeRenderer {
     return this.highlighter;
   }
 
-  private queuedSetupArgs:
-    | [ReadableStream<string> | string, HTMLElement]
-    | undefined;
-  async setup(_source: ReadableStream<string> | string, _wrapper: HTMLElement) {
+  private queuedSetupArgs: [ReadableStream<string>, HTMLElement] | undefined;
+  async setup(_source: ReadableStream<string>, _wrapper: HTMLElement) {
     const isSettingUp = this.queuedSetupArgs != null;
     this.queuedSetupArgs = [_source, _wrapper];
     if (isSettingUp) {
@@ -98,16 +100,7 @@ export class CodeRenderer {
     const [source, wrapper] = this.queuedSetupArgs;
     this.queuedSetupArgs = undefined;
 
-    // Convert string to ReadableStream if needed
-    const stream =
-      typeof source === 'string'
-        ? new ReadableStream<string>({
-            start(controller) {
-              controller.enqueue(source);
-              controller.close();
-            },
-          })
-        : source;
+    const stream = source;
 
     this.setupStream(stream, wrapper, this.highlighter);
   }
@@ -158,6 +151,7 @@ export class CodeRenderer {
           ...this.options,
           highlighter,
           allowRecalls: true,
+          defaultColor: false,
           cssVariablePrefix: formatCSSVariablePrefix(),
         })
       )
@@ -199,12 +193,12 @@ export class CodeRenderer {
       if ('recall' in token) {
         if (this.currentLineElement == null) {
           throw new Error(
-            'CodeRenderer.render: no current line element, shouldnt be possible to get here'
+            'FileStream.render: no current line element, shouldnt be possible to get here'
           );
         }
         if (token.recall > this.currentLineElement.childNodes.length) {
           throw new Error(
-            `CodeRenderer.render: Token recall exceed the current line, there's probably a bug...`
+            `FileStream.render: Token recall exceed the current line, there's probably a bug...`
           );
         }
         for (let i = 0; i < token.recall; i++) {
