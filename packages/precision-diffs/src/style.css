@@ -279,7 +279,7 @@ code {
   padding-block: var(--pjs-gap);
 }
 
-[data-pjs-header] + [data-icon-sprite] + [data-pjs] [data-code] {
+[data-pjs-header] ~ [data-pjs] [data-code] {
   padding-top: 0;
 }
 
@@ -661,7 +661,7 @@ code {
   overflow: hidden;
 }
 
-/* Undo some of the stuff that the `pre` tag does */
+/* Undo some of the stuff that the 'pre' tag does */
 [data-annotation-slot] {
   text-wrap-mode: wrap;
   word-break: normal;
