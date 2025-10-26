@@ -136,6 +136,13 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     this.expandedHunks.add(index);
   }
 
+  private isHunkExpanded(index: number) {
+    return (
+      this.getOptionsWithDefaults().expandUnchanged ||
+      this.expandedHunks.has(index)
+    );
+  }
+
   private mergeOptions(options: Partial<DiffHunksRendererOptions>) {
     // @ts-expect-error FIXME
     this.options = { ...this.options, ...options };
@@ -172,6 +179,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     const {
       diffStyle = 'split',
       diffIndicators = 'bars',
+      expandUnchanged = false,
       disableBackground = false,
       disableLineNumbers = false,
       hunkSeparators = 'line-info',
@@ -187,6 +195,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       return {
         diffIndicators,
         diffStyle,
+        expandUnchanged,
         disableBackground,
         disableLineNumbers,
         hunkSeparators,
@@ -201,6 +210,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     return {
       diffIndicators,
       diffStyle,
+      expandUnchanged,
       disableBackground,
       disableLineNumbers,
       hunkSeparators,
@@ -274,6 +284,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       themeType,
       disableBackground,
       diffIndicators,
+      expandUnchanged,
     } = this.getOptionsWithDefaults();
 
     this.diff = fileDiff;
@@ -288,7 +299,31 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     const hunkData: HunkData[] = [];
 
     let prevHunk: Hunk | undefined;
-    for (const hunk of fileDiff.hunks) {
+    const hunks = (() => {
+      if (fileDiff.hunks.length > 0) {
+        return fileDiff.hunks;
+      }
+      if (
+        expandUnchanged &&
+        this.diff?.newLines != null &&
+        this.diff.newLines.length > 0
+      ) {
+        const lineCount = this.diff.newLines.length + 1;
+        return [
+          {
+            additionCount: 0,
+            additionStart: lineCount,
+            deletedCount: 0,
+            deletedStart: lineCount,
+            hunkContent: [],
+            hunkContext: undefined,
+            hunkSpecs: undefined,
+          },
+        ];
+      }
+      return [];
+    })();
+    for (const hunk of hunks) {
       this.renderHunks({
         hunk,
         prevHunk,
@@ -463,7 +498,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
         content,
         this.createHastOptions(transformers, computed.decorations, hasLongLines)
       );
-      if (!this.expandedHunks.has(hunkIndex)) {
+      if (!this.isHunkExpanded(hunkIndex)) {
         if (hunkSeparators === 'line-info' || hunkSeparators === 'custom') {
           const lines = (() => {
             const hunkStart = hunk.additionStart;
@@ -486,7 +521,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
             );
             hunkData.push({ slotName, lines, type, expandable });
           }
-        } else if (hunkSeparators === 'metadata') {
+        } else if (hunkSeparators === 'metadata' && hunk.hunkSpecs != null) {
           linesAST.push(
             createSeparator({ type: 'metadata', content: hunk.hunkSpecs })
           );
@@ -499,7 +534,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
       }
       if (
         isLastHunk &&
-        !this.expandedHunks.has(hunkIndex + 1) &&
+        !this.isHunkExpanded(hunkIndex + 1) &&
         this.diff?.newLines != null
       ) {
         const lines =
@@ -539,7 +574,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     prevHunk: Hunk | undefined,
     isLastHunk: boolean
   ): ProcessLinesReturn {
-    const { maxLineLengthForHighlighting, diffStyle } =
+    const { maxLineLengthForHighlighting, diffStyle, expandUnchanged } =
       this.getOptionsWithDefaults();
     const { deletionAnnotations, additionAnnotations } = this;
     // NOTE(amadeus): We will probably need to rectify this
@@ -842,7 +877,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     let lastType: HunkLineType | undefined;
 
     // Proses hunk expanded content if expanded
-    if (this.expandedHunks.has(hunkIndex) && this.diff?.newLines != null) {
+    if (this.isHunkExpanded(hunkIndex) && this.diff?.newLines != null) {
       const { expandAddedStart, expandDeletedStart } = (() => {
         if (prevHunk != null) {
           return {
@@ -861,7 +896,7 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
           const line = this.diff.newLines[i];
           hasLongLines =
             hasLongLines || line.length > maxLineLengthForHighlighting;
-          processRawLine(line, 'context', true);
+          processRawLine(line, 'context', expandUnchanged ? false : true);
         }
       }
     }
@@ -880,14 +915,14 @@ export class DiffHunksRenderer<LAnnotation = undefined> {
     // Process final expansion hunk if necessary
     if (
       isLastHunk &&
-      this.expandedHunks.has(hunkIndex + 1) &&
+      this.isHunkExpanded(hunkIndex + 1) &&
       this.diff?.newLines != null
     ) {
       for (let i = additionLineNumber; i < this.diff.newLines.length; i++) {
         const line = this.diff.newLines[i];
         hasLongLines =
           hasLongLines || line.length > maxLineLengthForHighlighting;
-        processRawLine(line, 'context', true);
+        processRawLine(line, 'context', expandUnchanged ? false : true);
       }
     }
     resolveUnresolvedSpans();

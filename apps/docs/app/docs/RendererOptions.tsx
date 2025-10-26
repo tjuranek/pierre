@@ -80,6 +80,14 @@ export function RendererOptions() {
         </div>
 
         <div className="rounded-lg border p-4">
+          <h4 className="font-mono text-sm font-bold">expandUnchanged</h4>
+          <p className="text-muted-foreground text-sm">
+            Type: <code>boolean</code> | Default: <code>false</code>
+          </p>
+          <p>Force unchanged context regions to render expanded.</p>
+        </div>
+
+        <div className="rounded-lg border p-4">
           <h4 className="font-mono text-sm font-bold">diffIndicators</h4>
           <p className="text-muted-foreground text-sm">
             Type:{' '}
