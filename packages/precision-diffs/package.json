@@ -1,6 +1,6 @@
 {
   "name": "@pierre/precision-diffs",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "type": "module",
   "scripts": {
     "build": "tsc --build && bun post-build.js",
