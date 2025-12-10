@@ -46,7 +46,7 @@ export function Hero() {
       </svg>
 
       <h1 className="text-4xl font-semibold tracking-tight md:text-5xl lg:text-6xl">
-        The diff rendering library
+        A diff rendering library
       </h1>
       <p className="text-md text-muted-foreground mb-2 md:text-lg lg:text-xl">
         <code>@pierre/precision-diffs</code> is an open source diff and code
